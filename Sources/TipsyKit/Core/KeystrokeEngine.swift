@@ -1,16 +1,15 @@
 import CoreGraphics
 import Foundation
+import os
 
-/// Turns text into synthesized keyboard events for the focused application.
+/// Immutable, `Sendable` snapshot of the typing tuning parameters.
 ///
-/// Each character is resolved through the active ``KeyboardLayout`` and posted
-/// as a key-down / key-up pair via Quartz event services, so the target sees
-/// genuine hardware-like keystrokes (works where clipboard paste is blocked).
-///
-/// Characters with no layout mapping are either typed directly as Unicode
-/// (see ``unicodeFallback``) or reported back to the caller via the
-/// `type(_:using:)` return value.
-public final class KeystrokeEngine: @unchecked Sendable {
+/// The engine no longer carries mutable tuning state, so the caller builds a
+/// `TypingConfig` from its current settings at trigger time and hands it to
+/// ``KeystrokeEngine/type(_:using:config:)``. Because the value is captured by
+/// value, a background typing run can never observe a half-written update from
+/// the main actor.
+public struct TypingConfig: Sendable {
 
     /// Pause between characters. Some KVM/console targets drop events that
     /// arrive too fast; a small delay keeps input reliable.
@@ -27,30 +26,81 @@ public final class KeystrokeEngine: @unchecked Sendable {
     /// When `true`, characters with no ``KeyboardLayout`` mapping are typed
     /// directly via their Unicode scalar values instead of being skipped.
     /// When `false`, unmapped characters are reported back to the caller.
-    public var unicodeFallback: Bool = true
+    public var unicodeFallback: Bool
 
-    public init(characterDelay: TimeInterval = 0.012, jitter: TimeInterval = 0) {
+    public init(characterDelay: TimeInterval = 0.012,
+                jitter: TimeInterval = 0,
+                unicodeFallback: Bool = true) {
         self.characterDelay = characterDelay
         self.jitter = jitter
+        self.unicodeFallback = unicodeFallback
+    }
+}
+
+/// Turns text into synthesized keyboard events for the focused application.
+///
+/// Each character is resolved through the active ``KeyboardLayout`` and posted
+/// as a key-down / key-up pair via Quartz event services, so the target sees
+/// genuine hardware-like keystrokes (works where clipboard paste is blocked).
+///
+/// Characters with no layout mapping are either typed directly as Unicode
+/// (see ``TypingConfig/unicodeFallback``) or reported back to the caller via
+/// the `type(_:using:config:)` return value.
+///
+/// The engine holds no shared mutable tuning state: all timing/fallback inputs
+/// arrive per-call via an immutable ``TypingConfig``, so it is genuinely
+/// `Sendable` and safe to invoke from a background serial queue while the main
+/// actor owns it. The only cross-thread state is the cancel flag, guarded by a
+/// lock.
+public final class KeystrokeEngine: Sendable {
+
+    /// Thread-safe cancellation flag, checked once per character. Set from the
+    /// main actor (e.g. a "Stop Typing" action) while the run executes on a
+    /// background serial queue.
+    private let cancelled = OSAllocatedUnfairLock(initialState: false)
+
+    public init() {}
+
+    /// Requests that an in-flight run stop at the next character boundary.
+    /// Safe to call from any thread.
+    public func cancel() {
+        cancelled.withLock { $0 = true }
     }
 
-    /// Types `text` using `layout`. Returns the characters that could not be
-    /// typed, so the caller can warn the user.
+    /// Clears the cancel flag so a fresh run can proceed. Call once on the main
+    /// actor before scheduling each run.
+    public func resetCancellation() {
+        cancelled.withLock { $0 = false }
+    }
+
+    private var isCancelled: Bool {
+        cancelled.withLock { $0 }
+    }
+
+    /// Types `text` using `layout` with the timing/fallback rules in `config`.
+    /// Returns the characters that could not be typed, so the caller can warn
+    /// the user. Stops early (returning what was skipped so far) if ``cancel()``
+    /// is called mid-run.
     ///
     /// A character ends up in the returned array only when it has no layout
-    /// mapping *and* either ``unicodeFallback`` is `false` or the character
-    /// could not be encoded as Unicode.
+    /// mapping *and* either ``TypingConfig/unicodeFallback`` is `false` or the
+    /// character could not be encoded as Unicode.
     @discardableResult
-    public func type(_ text: String, using layout: KeyboardLayout) -> [Character] {
+    public func type(_ text: String, using layout: KeyboardLayout, config: TypingConfig) -> [Character] {
         var skipped: [Character] = []
-        let source = CGEventSource(stateID: .combinedSessionState)
+        // `.privateState` so posted events do not inherit live hardware
+        // modifiers (e.g. ⌘/⇧ still held from the hotkey), which would turn
+        // typed characters into destructive chords.
+        let source = CGEventSource(stateID: .privateState)
 
         for character in text {
+            if isCancelled { break }
+
             if let strokes = layout.strokes(for: character) {
                 for stroke in strokes {
                     post(stroke, source: source)
                 }
-            } else if unicodeFallback {
+            } else if config.unicodeFallback {
                 if !postUnicode(character, source: source) {
                     skipped.append(character)
                     continue
@@ -59,16 +109,16 @@ public final class KeystrokeEngine: @unchecked Sendable {
                 skipped.append(character)
                 continue
             }
-            sleepAfterCharacter()
+            sleepAfterCharacter(config: config)
         }
         return skipped
     }
 
-    /// Sleeps for the effective inter-character delay, applying ``jitter`` when set.
-    private func sleepAfterCharacter() {
-        var delay = characterDelay
-        if jitter > 0 {
-            delay = max(0, characterDelay + Double.random(in: -jitter...jitter))
+    /// Sleeps for the effective inter-character delay, applying jitter when set.
+    private func sleepAfterCharacter(config: TypingConfig) {
+        var delay = config.characterDelay
+        if config.jitter > 0 {
+            delay = max(0, config.characterDelay + Double.random(in: -config.jitter...config.jitter))
         }
         if delay > 0 {
             Thread.sleep(forTimeInterval: delay)
@@ -78,6 +128,7 @@ public final class KeystrokeEngine: @unchecked Sendable {
     private func post(_ stroke: KeyStroke, source: CGEventSource?) {
         let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: false)
+        // Set flags explicitly so unmodified strokes post with no modifiers.
         down?.flags = stroke.flags
         up?.flags = stroke.flags
         down?.post(tap: .cghidEventTap)
@@ -94,6 +145,9 @@ public final class KeystrokeEngine: @unchecked Sendable {
         else {
             return false
         }
+        // Explicitly clear modifiers for the synthetic Unicode strokes.
+        down.flags = []
+        up.flags = []
         down.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
         up.keyboardSetUnicodeString(stringLength: utf16.count, unicodeString: utf16)
         down.post(tap: .cghidEventTap)
