@@ -30,21 +30,28 @@ enum Settings {
     private static let defaultKeyCode = 9
     private static let defaultModifiers = ([.command, .shift] as NSEvent.ModifierFlags).rawValue
 
+    /// Clamps `value` into the closed range `[lo, hi]`.
+    private static func clamp<T: Comparable>(_ value: T, _ lo: T, _ hi: T) -> T {
+        min(max(value, lo), hi)
+    }
+
     /// Identifier of the default keyboard layout. Defaults to the first layout.
     static var layoutID: String {
         get { defaults.string(forKey: Key.layoutID) ?? Layouts.all[0].id }
         set { defaults.set(newValue, forKey: Key.layoutID) }
     }
 
-    /// Inter-character delay in seconds. Defaults to `0.012`.
+    /// Inter-character delay in seconds. Defaults to `0.012`. Persisted values are
+    /// clamped to the UI range `0...0.2`.
     static var characterDelay: Double {
-        get { defaults.object(forKey: Key.characterDelay) as? Double ?? 0.012 }
+        get { clamp(defaults.object(forKey: Key.characterDelay) as? Double ?? 0.012, 0, 0.2) }
         set { defaults.set(newValue, forKey: Key.characterDelay) }
     }
 
-    /// Random per-character timing variation in seconds. Defaults to `0`.
+    /// Random per-character timing variation in seconds. Defaults to `0`. Persisted
+    /// values are clamped to the UI range `0...0.1`.
     static var jitter: Double {
-        get { defaults.object(forKey: Key.jitter) as? Double ?? 0 }
+        get { clamp(defaults.object(forKey: Key.jitter) as? Double ?? 0, 0, 0.1) }
         set { defaults.set(newValue, forKey: Key.jitter) }
     }
 
@@ -54,9 +61,10 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.unicodeFallback) }
     }
 
-    /// Countdown before typing starts, in seconds. Defaults to `3`.
+    /// Countdown before typing starts, in seconds. Defaults to `3`. Persisted values
+    /// are clamped to the UI range `0...10`.
     static var leadTime: Double {
-        get { defaults.object(forKey: Key.leadTime) as? Double ?? 3 }
+        get { clamp(defaults.object(forKey: Key.leadTime) as? Double ?? 3, 0, 10) }
         set { defaults.set(newValue, forKey: Key.leadTime) }
     }
 
@@ -67,8 +75,15 @@ enum Settings {
     }
 
     /// Virtual key code of the trigger hotkey. Defaults to `9` (the 'V' key).
+    ///
+    /// A stored value outside the valid virtual-key-code range `0...65535` is
+    /// treated as corrupt and falls back to ``defaultKeyCode``, so callers can
+    /// safely convert the result with `UInt16(...)` without trapping.
     static var hotkeyKeyCode: Int {
-        get { defaults.object(forKey: Key.hotkeyKeyCode) as? Int ?? defaultKeyCode }
+        get {
+            let stored = defaults.object(forKey: Key.hotkeyKeyCode) as? Int ?? defaultKeyCode
+            return (0...65535).contains(stored) ? stored : defaultKeyCode
+        }
         set { defaults.set(newValue, forKey: Key.hotkeyKeyCode) }
     }
 
@@ -85,9 +100,9 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.cueSoundEnabled) }
     }
 
-    /// Cue volume, 0–1. Defaults to `0.7`.
+    /// Cue volume, 0–1. Defaults to `0.7`. Persisted values are clamped to `0...1`.
     static var cueVolume: Double {
-        get { defaults.object(forKey: Key.cueVolume) as? Double ?? 0.7 }
+        get { clamp(defaults.object(forKey: Key.cueVolume) as? Double ?? 0.7, 0, 1) }
         set { defaults.set(newValue, forKey: Key.cueVolume) }
     }
 
