@@ -302,6 +302,16 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    // MARK: - Window lifecycle
+
+    /// Closing the window mid-recording must tear down the local key monitor;
+    /// otherwise it lingers for the process lifetime and silently rebinds the
+    /// hotkey on the next qualifying key-down. `cancelRecording()` no-ops when
+    /// no monitor is installed.
+    func windowWillClose(_ notification: Notification) {
+        cancelRecording()
+    }
+
     // MARK: - Hotkey recording
 
     @objc private func hotkeyRecorderClicked() {
