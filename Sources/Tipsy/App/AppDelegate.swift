@@ -41,6 +41,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func applyHotkeyState() {
+        // Push the persisted binding into the manager so the live match
+        // reflects whatever the user configured in Preferences.
+        hotkey.configure(
+            keyCode: UInt16(Settings.hotkeyKeyCode),
+            modifiers: NSEvent.ModifierFlags(rawValue: Settings.hotkeyModifiers)
+        )
         if Settings.hotkeyEnabled {
             hotkey.enable()
         } else {
