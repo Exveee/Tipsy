@@ -1,0 +1,73 @@
+import CoreGraphics
+
+/// German (QWERTZ), Apple layout.
+///
+/// Groundwork coverage: letters (with Y/Z swap), umlauts, ß, digits and their
+/// shifted symbols, comma/period, whitespace. AltGr (Option) symbols such as
+/// `@ € { } [ ] \ | ~` are partially mapped.
+/// TODO: complete AltGr table and dead-key accents (^ ´ `).
+struct GermanLayout: KeyboardLayout {
+    let id = "de"
+    let displayName = "German (QWERTZ)"
+
+    private let table: [Character: KeyStroke]
+
+    init() {
+        var t: [Character: KeyStroke] = [:]
+
+        // Letters keep US positions except Y and Z are swapped on QWERTZ.
+        var letters = VK.ansiLetters
+        letters["y"] = VK.z   // 'y' sits on the US 'z' position
+        letters["z"] = VK.y   // 'z' sits on the US 'y' position
+        for (ch, code) in letters {
+            t[ch] = KeyStroke(keyCode: code)
+            t[Character(ch.uppercased())] = KeyStroke(keyCode: code, shift: true)
+        }
+
+        // Umlauts and ß occupy ANSI punctuation positions.
+        t["ü"] = KeyStroke(keyCode: VK.leftBracket)
+        t["Ü"] = KeyStroke(keyCode: VK.leftBracket, shift: true)
+        t["ö"] = KeyStroke(keyCode: VK.semicolon)
+        t["Ö"] = KeyStroke(keyCode: VK.semicolon, shift: true)
+        t["ä"] = KeyStroke(keyCode: VK.quote)
+        t["Ä"] = KeyStroke(keyCode: VK.quote, shift: true)
+        t["ß"] = KeyStroke(keyCode: VK.minus)
+
+        // Digit row and its shifted symbols (German legends).
+        let digits: [(Character, Character, CGKeyCode)] = [
+            ("1", "!", VK.n1), ("2", "\"", VK.n2), ("3", "§", VK.n3),
+            ("4", "$", VK.n4), ("5", "%", VK.n5), ("6", "&", VK.n6),
+            ("7", "/", VK.n7), ("8", "(", VK.n8), ("9", ")", VK.n9),
+            ("0", "=", VK.n0)
+        ]
+        for (base, shifted, code) in digits {
+            t[base] = KeyStroke(keyCode: code)
+            t[shifted] = KeyStroke(keyCode: code, shift: true)
+        }
+
+        // Comma / period and their shifted symbols.
+        t[","] = KeyStroke(keyCode: VK.comma)
+        t[";"] = KeyStroke(keyCode: VK.comma, shift: true)
+        t["."] = KeyStroke(keyCode: VK.period)
+        t[":"] = KeyStroke(keyCode: VK.period, shift: true)
+        t["-"] = KeyStroke(keyCode: VK.slash)
+        t["_"] = KeyStroke(keyCode: VK.slash, shift: true)
+        t["+"] = KeyStroke(keyCode: VK.rightBracket)
+        t["*"] = KeyStroke(keyCode: VK.rightBracket, shift: true)
+
+        // Common AltGr (Option) symbols.
+        t["@"] = KeyStroke(keyCode: VK.l, option: true)
+        t["€"] = KeyStroke(keyCode: VK.e, option: true)
+
+        // Whitespace.
+        t[" "] = KeyStroke(keyCode: VK.space)
+        t["\t"] = KeyStroke(keyCode: VK.tab)
+        t["\n"] = KeyStroke(keyCode: VK.return)
+
+        table = t
+    }
+
+    func keyStroke(for character: Character) -> KeyStroke? {
+        table[character]
+    }
+}
