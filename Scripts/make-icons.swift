@@ -1,7 +1,8 @@
 #!/usr/bin/env swift
 //
 // Generates the Tipsy app icon as a .iconset of PNGs.
-// Run: swift Scripts/make-icons.swift  (then bundle.sh runs iconutil)
+// Run: swift Scripts/make-icons.swift [outputDir]  (then bundle.sh runs iconutil)
+//   outputDir: where to write AppIcon.iconset (also via $TIPSY_DIST; default "dist")
 //
 // Draws the brand glyph — a clipboard with an amber text caret on an
 // indigo→violet squircle — at every required size with CoreGraphics/AppKit.
@@ -65,7 +66,13 @@ func drawIcon(_ S: CGFloat) -> NSBitmapImageRep {
     return rep
 }
 
-let outDir = "dist/AppIcon.iconset"
+// Output directory resolution (most explicit wins):
+//   1. first CLI argument, 2. $TIPSY_DIST, 3. "dist" relative to CWD.
+// The .iconset is always written as <distDir>/AppIcon.iconset.
+let distDir = CommandLine.arguments.count > 1
+    ? CommandLine.arguments[1]
+    : (ProcessInfo.processInfo.environment["TIPSY_DIST"] ?? "dist")
+let outDir = URL(fileURLWithPath: distDir).appendingPathComponent("AppIcon.iconset").path
 try? FileManager.default.createDirectory(atPath: outDir, withIntermediateDirectories: true)
 
 // (point size, scale) → filename, per Apple's iconset convention.

@@ -8,6 +8,7 @@
 set -euo pipefail
 
 CONFIG="${1:-release}"
+case "$CONFIG" in debug|release) ;; *) echo "Usage: $0 [debug|release]" >&2; exit 1;; esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APP="$ROOT/dist/Tipsy.app"
 
@@ -25,7 +26,7 @@ cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 # App icon. Regenerate the .icns from the generator if iconutil is available,
 # then copy it into the bundle (referenced by Info.plist's CFBundleIconFile).
 if command -v iconutil >/dev/null 2>&1; then
-  ( cd "$ROOT" && swift Scripts/make-icons.swift >/dev/null )
+  ( cd "$ROOT" && swift Scripts/make-icons.swift "$ROOT/dist" >/dev/null )
   iconutil -c icns "$ROOT/dist/AppIcon.iconset" -o "$ROOT/Resources/AppIcon.icns"
 fi
 if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
@@ -55,13 +56,13 @@ fi
 
 if [ "$SIGN_IDENTITY" = "-" ]; then
   echo "==> Signing ad-hoc (run Scripts/make-signing-cert.sh for stable permissions)"
-  codesign --force --deep --sign - "$APP"
+  codesign --force --sign - "$APP"
 elif printf '%s' "$SIGN_IDENTITY" | grep -q "Developer ID"; then
   echo "==> Signing with Developer ID: $SIGN_IDENTITY (hardened runtime + timestamp)"
-  codesign --force --deep --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
 else
   echo "==> Signing with local identity: $SIGN_IDENTITY (stable signature)"
-  codesign --force --deep --options runtime --sign "$SIGN_IDENTITY" "$APP"
+  codesign --force --options runtime --sign "$SIGN_IDENTITY" "$APP"
 fi
 
 echo "==> Done: $APP"
