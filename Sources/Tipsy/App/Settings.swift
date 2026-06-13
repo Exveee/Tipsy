@@ -1,4 +1,5 @@
 import Foundation
+import TipsyKit
 
 /// Persisted user settings backed by `UserDefaults.standard`.
 ///

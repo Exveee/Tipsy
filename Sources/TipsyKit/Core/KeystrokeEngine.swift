@@ -10,11 +10,11 @@ import Foundation
 /// Characters with no layout mapping are either typed directly as Unicode
 /// (see ``unicodeFallback``) or reported back to the caller via the
 /// `type(_:using:)` return value.
-final class KeystrokeEngine: @unchecked Sendable {
+public final class KeystrokeEngine: @unchecked Sendable {
 
     /// Pause between characters. Some KVM/console targets drop events that
     /// arrive too fast; a small delay keeps input reliable.
-    var characterDelay: TimeInterval
+    public var characterDelay: TimeInterval
 
     /// Maximum random variation, in seconds, added to each inter-character
     /// pause to make typing look less mechanical.
@@ -22,14 +22,14 @@ final class KeystrokeEngine: @unchecked Sendable {
     /// When greater than zero, the effective delay per character is
     /// `max(0, characterDelay + Double.random(in: -jitter...jitter))`.
     /// Values `<= 0` disable jitter and use ``characterDelay`` verbatim.
-    var jitter: TimeInterval
+    public var jitter: TimeInterval
 
     /// When `true`, characters with no ``KeyboardLayout`` mapping are typed
     /// directly via their Unicode scalar values instead of being skipped.
     /// When `false`, unmapped characters are reported back to the caller.
-    var unicodeFallback: Bool = true
+    public var unicodeFallback: Bool = true
 
-    init(characterDelay: TimeInterval = 0.012, jitter: TimeInterval = 0) {
+    public init(characterDelay: TimeInterval = 0.012, jitter: TimeInterval = 0) {
         self.characterDelay = characterDelay
         self.jitter = jitter
     }
@@ -41,7 +41,7 @@ final class KeystrokeEngine: @unchecked Sendable {
     /// mapping *and* either ``unicodeFallback`` is `false` or the character
     /// could not be encoded as Unicode.
     @discardableResult
-    func type(_ text: String, using layout: KeyboardLayout) -> [Character] {
+    public func type(_ text: String, using layout: KeyboardLayout) -> [Character] {
         var skipped: [Character] = []
         let source = CGEventSource(stateID: .combinedSessionState)
 

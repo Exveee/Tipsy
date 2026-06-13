@@ -7,35 +7,39 @@ table, registering it, and adding unit tests. No event-system code is involved.
 
 ## 1. Implement `KeyboardLayout`
 
-The protocol (`Sources/Tipsy/Layouts/KeyboardLayout.swift`):
+The layout engine lives in the `TipsyKit` library, so its public API is what
+the app and the `TipsyCheck` test runner import. The protocol
+(`Sources/TipsyKit/Layouts/KeyboardLayout.swift`):
 
 ```swift
-protocol KeyboardLayout: Sendable {
+public protocol KeyboardLayout: Sendable {
     var id: String { get }            // stable settings id, e.g. "ch"
     var displayName: String { get }   // menu title, e.g. "Swiss German"
     func keyStroke(for character: Character) -> KeyStroke?
 }
 ```
 
-Create a new file under `Sources/Tipsy/Layouts/`, e.g. `SwissGermanLayout.swift`.
-Build the table once in `init` and look it up in `keyStroke(for:)`:
+Create a new file under `Sources/TipsyKit/Layouts/`, e.g.
+`SwissGermanLayout.swift`. Because it is part of the library's public API, mark
+the type, its `init`, and the protocol members `public`. Build the table once in
+`init` and look it up in `keyStroke(for:)`:
 
 ```swift
 import CoreGraphics
 
-struct SwissGermanLayout: KeyboardLayout {
-    let id = "ch"
-    let displayName = "Swiss German"
+public struct SwissGermanLayout: KeyboardLayout {
+    public let id = "ch"
+    public let displayName = "Swiss German"
 
     private let table: [Character: KeyStroke]
 
-    init() {
+    public init() {
         var t: [Character: KeyStroke] = [:]
         // ... fill the table (see below) ...
         table = t
     }
 
-    func keyStroke(for character: Character) -> KeyStroke? {
+    public func keyStroke(for character: Character) -> KeyStroke? {
         table[character]
     }
 }
@@ -47,10 +51,10 @@ A `KeyStroke` is a **virtual key code** (a physical key *position*) plus the
 `shift` / `option` modifiers held while pressing it:
 
 ```swift
-struct KeyStroke: Equatable {
-    let keyCode: CGKeyCode
-    var shift: Bool = false
-    var option: Bool = false
+public struct KeyStroke: Equatable, Sendable {
+    public let keyCode: CGKeyCode
+    public var shift: Bool = false
+    public var option: Bool = false
 }
 ```
 
@@ -109,8 +113,8 @@ does for `~`.
 Add an instance to the registry in `KeyboardLayout.swift`:
 
 ```swift
-enum Layouts {
-    static let all: [KeyboardLayout] = [
+public enum Layouts {
+    public static let all: [KeyboardLayout] = [
         GermanLayout(), USLayout(), UKLayout(), SwissGermanLayout()
     ]
 }
@@ -119,10 +123,13 @@ enum Layouts {
 The first entry is the default. The new layout automatically appears in the
 menu bar layout picker and the Preferences popup — no UI changes needed.
 
-## 6. Add unit tests
+## 6. Add checks to the test runner
 
-Add cases to `Tests/TipsyTests/LayoutTests.swift`. Tests assert `KeyStroke`
-values directly (no event system), so they run fast and in CI. Cover:
+Tipsy has no XCTest target — both XCTest and swift-testing are unavailable with
+Command Line Tools only. Instead, `Tests/TipsyCheck/main.swift` is a plain
+executable that imports `TipsyKit` and asserts `KeyStroke` values directly (no
+event system), so checks run fast and locally. Add cases there using the
+`expectEqual` / `expectNil` helpers. Cover:
 
 - a plain letter (lower and upper case),
 - each national difference / override that distinguishes the layout,
@@ -131,15 +138,12 @@ values directly (no event system), so they run fast and in CI. Cover:
   gaps stay intentional:
 
 ```swift
-func testSwissGermanOumlaut() {
-    XCTAssertEqual(SwissGermanLayout().keyStroke(for: "ö"),
-                   KeyStroke(keyCode: VK.quote, shift: true))
-}
+expectEqual(SwissGermanLayout().keyStroke(for: "ö"),
+            KeyStroke(keyCode: VK.quote, shift: true))
 
-func testSwissGermanTildeIsUnmappedDeadKey() {
-    XCTAssertNil(SwissGermanLayout().keyStroke(for: "~"))
-}
+expectNil(SwissGermanLayout().keyStroke(for: "~"))
 ```
 
-Run them with `swift test` (full Xcode is needed locally to run the XCTest
-suite; CI runs it on every push).
+Run them with `./Scripts/check.sh` (or `swift run TipsyCheck` directly). The
+runner prints `✗ FAIL: …` for each failed check, a `N passed, M failed`
+summary, and exits non-zero if anything failed.

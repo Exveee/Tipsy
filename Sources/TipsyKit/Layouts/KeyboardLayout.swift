@@ -3,7 +3,7 @@
 ///
 /// Implementations are pure lookup tables so they are trivially testable
 /// without touching the event system.
-protocol KeyboardLayout: Sendable {
+public protocol KeyboardLayout: Sendable {
     /// Stable identifier used in settings, e.g. `"de"`.
     var id: String { get }
     /// Human-readable name shown in the menu, e.g. `"German (QWERTZ)"`.
@@ -13,7 +13,7 @@ protocol KeyboardLayout: Sendable {
 }
 
 /// Registry of layouts shipped with Tipsy.
-enum Layouts {
+public enum Layouts {
     /// All available layouts. The first entry is the default.
-    static let all: [KeyboardLayout] = [GermanLayout(), USLayout(), UKLayout()]
+    public static let all: [KeyboardLayout] = [GermanLayout(), USLayout(), UKLayout()]
 }

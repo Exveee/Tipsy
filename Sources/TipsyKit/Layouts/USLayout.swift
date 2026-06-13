@@ -1,13 +1,13 @@
 import CoreGraphics
 
 /// US English (ANSI QWERTY). Reference layout — fully mapped for printable ASCII.
-struct USLayout: KeyboardLayout {
-    let id = "us"
-    let displayName = "US (QWERTY)"
+public struct USLayout: KeyboardLayout {
+    public let id = "us"
+    public let displayName = "US (QWERTY)"
 
     private let table: [Character: KeyStroke]
 
-    init() {
+    public init() {
         var t: [Character: KeyStroke] = [:]
 
         // Letters: lowercase unshifted, uppercase shifted.
@@ -50,7 +50,7 @@ struct USLayout: KeyboardLayout {
         table = t
     }
 
-    func keyStroke(for character: Character) -> KeyStroke? {
+    public func keyStroke(for character: Character) -> KeyStroke? {
         table[character]
     }
 }

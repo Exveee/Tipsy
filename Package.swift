@@ -7,14 +7,19 @@ let package = Package(
         .macOS(.v13)
     ],
     targets: [
+        .target(
+            name: "TipsyKit",
+            path: "Sources/TipsyKit"
+        ),
         .executableTarget(
             name: "Tipsy",
+            dependencies: ["TipsyKit"],
             path: "Sources/Tipsy"
         ),
-        .testTarget(
-            name: "TipsyTests",
-            dependencies: ["Tipsy"],
-            path: "Tests/TipsyTests"
+        .executableTarget(
+            name: "TipsyCheck",
+            dependencies: ["TipsyKit"],
+            path: "Tests/TipsyCheck"
         )
     ]
 )

@@ -6,14 +6,14 @@ import CoreGraphics
 /// differences (`@`/`"` swap, `£` on Shift+3, `#`/`~` key, `€` on Option+2).
 /// TODO: verify the grave-key `¬` / `|` arrangement against BS 4822 before
 /// mapping; remaining Option-layer symbols still to be confirmed.
-struct UKLayout: KeyboardLayout {
-    let id = "uk"
-    let displayName = "UK (QWERTY)"
+public struct UKLayout: KeyboardLayout {
+    public let id = "uk"
+    public let displayName = "UK (QWERTY)"
 
     private let us = USLayout()
     private let overrides: [Character: KeyStroke]
 
-    init() {
+    public init() {
         var o: [Character: KeyStroke] = [:]
         // British rows swap @ and " relative to US.
         o["\""] = KeyStroke(keyCode: VK.n2, shift: true)
@@ -31,7 +31,7 @@ struct UKLayout: KeyboardLayout {
         overrides = o
     }
 
-    func keyStroke(for character: Character) -> KeyStroke? {
+    public func keyStroke(for character: Character) -> KeyStroke? {
         overrides[character] ?? us.keyStroke(for: character)
     }
 }

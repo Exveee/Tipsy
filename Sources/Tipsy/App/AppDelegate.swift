@@ -1,4 +1,5 @@
 import AppKit
+import TipsyKit
 
 /// Menu bar controller: lets the user pick a layout and trigger typing of the
 /// current clipboard into whatever window is focused after a short countdown.

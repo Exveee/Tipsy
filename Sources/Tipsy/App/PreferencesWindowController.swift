@@ -1,4 +1,5 @@
 import AppKit
+import TipsyKit
 
 /// Code-built (no nib) preferences window. Edits write through to ``Settings``
 /// immediately and notify ``onChange`` so the app can re-apply them live.

@@ -62,30 +62,35 @@ Synthesizing input requires the **Accessibility** permission
 
 ```
 Tipsy/
-├── Package.swift                 # SwiftPM manifest (executable + test target)
-├── Sources/Tipsy/
-│   ├── main.swift                # NSApplication bootstrap (menu bar accessory)
-│   ├── App/
-│   │   ├── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
-│   │   ├── Settings.swift        # UserDefaults-backed persisted settings
-│   │   ├── PreferencesWindowController.swift  # Code-built preferences window
-│   │   └── HotkeyManager.swift   # Global Cmd+Shift+T hotkey
-│   ├── Core/
-│   │   ├── KeyStroke.swift       # Key code + modifier value type
-│   │   ├── KeystrokeEngine.swift # Quartz event synthesis
-│   │   └── ClipboardReader.swift # NSPasteboard access
-│   ├── Layouts/
-│   │   ├── KeyboardLayout.swift  # Protocol + Layouts registry
-│   │   ├── VirtualKeyCodes.swift # ANSI virtual key-code constants
-│   │   ├── USLayout.swift        # US QWERTY (reference, full ASCII)
-│   │   ├── GermanLayout.swift    # DE QWERTZ (Y/Z swap, umlauts, ß)
-│   │   └── UKLayout.swift        # UK QWERTY (£, @/" swap, #/~)
-│   └── Permissions/
-│       └── AccessibilityManager.swift
-├── Tests/TipsyTests/             # Layout mapping unit tests (XCTest)
+├── Package.swift                 # SwiftPM manifest (TipsyKit lib + 2 executables)
+├── Sources/
+│   ├── TipsyKit/                 # Reusable library (imported by app + tests)
+│   │   ├── Core/
+│   │   │   ├── KeyStroke.swift       # Key code + modifier value type
+│   │   │   ├── KeystrokeEngine.swift # Quartz event synthesis
+│   │   │   └── ClipboardReader.swift # NSPasteboard access
+│   │   ├── Layouts/
+│   │   │   ├── KeyboardLayout.swift  # Protocol + Layouts registry
+│   │   │   ├── VirtualKeyCodes.swift # ANSI virtual key-code constants
+│   │   │   ├── USLayout.swift        # US QWERTY (reference, full ASCII)
+│   │   │   ├── GermanLayout.swift    # DE QWERTZ (Y/Z swap, umlauts, ß)
+│   │   │   └── UKLayout.swift        # UK QWERTY (£, @/" swap, #/~)
+│   │   └── Permissions/
+│   │       └── AccessibilityManager.swift
+│   └── Tipsy/                    # Menu bar app executable (imports TipsyKit)
+│       ├── main.swift            # NSApplication bootstrap (menu bar accessory)
+│       └── App/
+│           ├── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
+│           ├── Settings.swift        # UserDefaults-backed persisted settings
+│           ├── PreferencesWindowController.swift  # Code-built preferences window
+│           └── HotkeyManager.swift   # Global Cmd+Shift+T hotkey
+├── Tests/TipsyCheck/             # Plain executable test runner (no XCTest)
+│   └── main.swift                # Self-contained layout-mapping checks
 ├── Resources/Info.plist          # Bundle metadata (LSUIElement menu bar app)
-├── Scripts/bundle.sh             # Build → assemble Tipsy.app (no Xcode needed)
-└── .github/workflows/ci.yml      # Build + test on macOS runner
+└── Scripts/
+    ├── bundle.sh                 # Build → assemble Tipsy.app (no Xcode needed)
+    ├── check.sh                  # Local CI: swift build + run TipsyCheck
+    └── release.sh                # Local signed/notarized release flow
 ```
 
 ### Shipped layouts
@@ -100,11 +105,15 @@ Tipsy/
 
 ## Build & run
 
-Requires macOS 13+ and the Swift 6 toolchain (Command Line Tools is enough to
-build; full Xcode is needed only to run the `XCTest` suite locally — CI runs it).
+Requires macOS 13+ and the Swift 6 toolchain. **Command Line Tools is enough** —
+no Xcode needed for anything, including the tests (they run as a plain
+executable, not XCTest).
 
 ```bash
-# Build the executable
+# Build + run the test suite (local CI)
+./Scripts/check.sh
+
+# Build the executable on its own
 swift build
 
 # Assemble a runnable Tipsy.app (ad-hoc signed) into ./dist
@@ -120,12 +129,21 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
 ## Infrastructure & roadmap
 
 **Toolchain**
-- Swift Package Manager (no Xcode project checked in — keeps the repo lean and
-  CI simple). `Scripts/bundle.sh` produces the `.app` bundle directly from SPM
-  output, so a GUI app ships without an Xcode project.
+- Swift Package Manager (no Xcode project checked in — keeps the repo lean).
+  `Scripts/bundle.sh` produces the `.app` bundle directly from SPM output, so a
+  GUI app ships without an Xcode project. A `TipsyKit` library holds the
+  reusable logic, imported by both the app and the test runner.
 
-**CI** (`.github/workflows/ci.yml`)
-- `swift build` + `swift test` on the `macos-14` runner for every push/PR.
+**Local build + test** (`./Scripts/check.sh`)
+- Runs `swift build` then `swift run TipsyCheck` (a plain executable test runner
+  that replaces XCTest — both XCTest and swift-testing are unavailable with
+  Command Line Tools only). Everything runs locally; there is no GitHub Actions.
+
+**Local release** (`./Scripts/release.sh`)
+- Builds and assembles `dist/Tipsy.app` via `bundle.sh`. When `SIGN_IDENTITY` is
+  a real Developer ID and the `AC_API_*` notarization env vars are set, it zips,
+  submits to `notarytool`, staples, and re-zips; otherwise it produces the
+  ad-hoc app and says so.
 
 **Done**
 - [x] German Option (AltGr) layer: `@ € { } [ ] | \` mapped (`~` is a dead key,
@@ -137,15 +155,15 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
 - [x] Preferences window (layout, delays, lead time, toggles) with persisted
       settings.
 - [x] Unicode fallback (Unicode-direct event posting) for characters no layout maps.
-- [x] Code signing + notarization workflow (`.github/workflows/release.yml`, on
-      `v*` tags) — falls back to an ad-hoc build until the signing secrets are set.
+- [x] Code signing + notarization flow (`./Scripts/release.sh`) — falls back to
+      an ad-hoc build until the signing/notarization env vars are set.
 
 **Planned**
 - [ ] Full dead-key accent support (circumflex, acute, grave, tilde) via
       multi-stroke sequences; finish verifying the UK layout against BS 4822.
 - [ ] Add Swiss German and other layouts behind the same `KeyboardLayout` protocol.
-- [ ] Provision the release signing secrets (Developer ID + notarization) to ship
-      a signed, notarized download.
+- [ ] Provision the release signing material (Developer ID + notarization keys)
+      to ship a signed, notarized download.
 
 ---
 

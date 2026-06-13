@@ -1,28 +1,32 @@
 # Architecture
 
 Tipsy is a macOS menu bar accessory app (`LSUIElement`) built with Swift
-Package Manager — there is no Xcode project. The executable bootstraps an
-`NSApplication` in `.accessory` mode (no Dock icon, no main window) and hands
-control to `AppDelegate`.
+Package Manager — there is no Xcode project. The reusable logic lives in a
+`TipsyKit` library; the `Tipsy` executable target holds only the AppKit UI and
+imports `TipsyKit`, and a `TipsyCheck` executable target imports `TipsyKit` to
+run the tests. The app executable bootstraps an `NSApplication` in `.accessory`
+mode (no Dock icon, no main window) and hands control to `AppDelegate`.
 
 ```
-Sources/Tipsy/
-├── main.swift                # NSApplication bootstrap (accessory policy)
-├── App/
-│   ├── AppDelegate.swift      # Menu bar UI + typing trigger
-│   ├── Settings.swift         # UserDefaults-backed settings
-│   ├── PreferencesWindowController.swift
-│   └── HotkeyManager.swift    # Global Cmd+Shift+T hotkey
-├── Core/
-│   ├── ClipboardReader.swift  # NSPasteboard text
-│   ├── KeyStroke.swift        # Key code + modifier value type
-│   └── KeystrokeEngine.swift  # Quartz CGEvent synthesis
-├── Layouts/
-│   ├── KeyboardLayout.swift   # Protocol + Layouts registry
-│   ├── VirtualKeyCodes.swift  # ANSI virtual key-code constants (VK)
-│   ├── USLayout.swift / GermanLayout.swift / UKLayout.swift
-└── Permissions/
-    └── AccessibilityManager.swift
+Sources/
+├── TipsyKit/                  # Reusable library (public API)
+│   ├── Core/
+│   │   ├── ClipboardReader.swift  # NSPasteboard text
+│   │   ├── KeyStroke.swift        # Key code + modifier value type
+│   │   └── KeystrokeEngine.swift  # Quartz CGEvent synthesis
+│   ├── Layouts/
+│   │   ├── KeyboardLayout.swift   # Protocol + Layouts registry
+│   │   ├── VirtualKeyCodes.swift  # ANSI virtual key-code constants (VK)
+│   │   ├── USLayout.swift / GermanLayout.swift / UKLayout.swift
+│   └── Permissions/
+│       └── AccessibilityManager.swift
+└── Tipsy/                     # Menu bar app executable (imports TipsyKit)
+    ├── main.swift                # NSApplication bootstrap (accessory policy)
+    └── App/
+        ├── AppDelegate.swift      # Menu bar UI + typing trigger
+        ├── Settings.swift         # UserDefaults-backed settings
+        ├── PreferencesWindowController.swift
+        └── HotkeyManager.swift    # Global Cmd+Shift+T hotkey
 ```
 
 ## Data flow
@@ -54,18 +58,19 @@ Typing the clipboard is a four-stage pipeline:
 ### `KeyStroke`
 
 ```swift
-struct KeyStroke: Equatable {
-    let keyCode: CGKeyCode
-    var shift: Bool = false
-    var option: Bool = false
-    var flags: CGEventFlags { /* shift → .maskShift, option → .maskAlternate */ }
+public struct KeyStroke: Equatable, Sendable {
+    public let keyCode: CGKeyCode
+    public var shift: Bool = false
+    public var option: Bool = false
+    public var flags: CGEventFlags { /* shift → .maskShift, option → .maskAlternate */ }
 }
 ```
 
 `KeyStroke` is the boundary between the layout tables (pure data) and the event
 system. Because layouts are pure lookup tables that produce `KeyStroke` values,
-they are trivially unit-testable without touching Quartz at all
-(`Tests/TipsyTests/LayoutTests.swift`).
+they are trivially testable without touching Quartz at all — the `TipsyCheck`
+runner (`Tests/TipsyCheck/main.swift`) imports `TipsyKit` and asserts these
+values directly.
 
 ## Menu bar lifecycle
 

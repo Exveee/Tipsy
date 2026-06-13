@@ -7,13 +7,13 @@ import CoreGraphics
 /// `@ € { } [ ] | \`. `~` is a dead key and is intentionally left unmapped
 /// until multi-stroke support exists.
 /// TODO: dead-key accents (^ ´ ` ~) need multi-stroke support.
-struct GermanLayout: KeyboardLayout {
-    let id = "de"
-    let displayName = "German (QWERTZ)"
+public struct GermanLayout: KeyboardLayout {
+    public let id = "de"
+    public let displayName = "German (QWERTZ)"
 
     private let table: [Character: KeyStroke]
 
-    init() {
+    public init() {
         var t: [Character: KeyStroke] = [:]
 
         // Letters keep US positions except Y and Z are swapped on QWERTZ.
@@ -75,7 +75,7 @@ struct GermanLayout: KeyboardLayout {
         table = t
     }
 
-    func keyStroke(for character: Character) -> KeyStroke? {
+    public func keyStroke(for character: Character) -> KeyStroke? {
         table[character]
     }
 }
