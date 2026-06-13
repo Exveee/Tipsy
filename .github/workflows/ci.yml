@@ -1,5 +1,8 @@
 name: CI
 
+# Build + test on every push/PR. Signed, notarized, distributable builds are
+# produced separately by .github/workflows/release.yml (triggered on v* tags).
+
 on:
   push:
     branches: [main]

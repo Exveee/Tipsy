@@ -12,7 +12,9 @@ is what the remote machine actually receives — even when its layout differs fr
 yours.
 
 > Status: **early groundwork (v0.1.0)**. Core architecture and layout engine are
-> in place; the menu bar app builds and runs. Layout coverage is being expanded.
+> in place; the menu bar app builds and runs, with Preferences, persisted
+> settings, a global hotkey, and Unicode fallback. Layout coverage is being
+> expanded.
 
 ---
 
@@ -42,10 +44,14 @@ with the correct national layout, at a console-friendly speed.
 2. **KeyboardLayout** maps each `Character` to a layout-independent
    **`KeyStroke`** (virtual key code + Shift/Option modifiers).
 3. **KeystrokeEngine** posts each stroke as Quartz keyboard events
-   (`CGEvent` → `.cghidEventTap`), with a small inter-character delay so
-   slow console targets don't drop input.
+   (`CGEvent` → `.cghidEventTap`), with a small inter-character delay (and
+   optional jitter) so slow console targets don't drop input. Characters with
+   no layout mapping are typed directly as Unicode when fallback is enabled.
 4. **AppDelegate** is the menu bar UI: pick a layout, trigger typing, and a
-   short countdown lets you focus the target window first.
+   short countdown lets you focus the target window first. A global
+   **Cmd+Shift+T** hotkey triggers typing without opening the menu, and a
+   **Preferences** window exposes the tuning options, all persisted across
+   launches.
 
 Synthesizing input requires the **Accessibility** permission
 (`AXIsProcessTrusted`); `AccessibilityManager` checks for it and prompts.
@@ -60,7 +66,10 @@ Tipsy/
 ├── Sources/Tipsy/
 │   ├── main.swift                # NSApplication bootstrap (menu bar accessory)
 │   ├── App/
-│   │   └── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
+│   │   ├── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
+│   │   ├── Settings.swift        # UserDefaults-backed persisted settings
+│   │   ├── PreferencesWindowController.swift  # Code-built preferences window
+│   │   └── HotkeyManager.swift   # Global Cmd+Shift+T hotkey
 │   ├── Core/
 │   │   ├── KeyStroke.swift       # Key code + modifier value type
 │   │   ├── KeystrokeEngine.swift # Quartz event synthesis
@@ -118,14 +127,41 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
 **CI** (`.github/workflows/ci.yml`)
 - `swift build` + `swift test` on the `macos-14` runner for every push/PR.
 
+**Done**
+- [x] German Option (AltGr) layer: `@ € { } [ ] | \` mapped (`~` is a dead key,
+      still unmapped).
+- [x] UK British overrides: `£`, `@`/`"` swap, `#`/`~`, `€` (Option layer only
+      partially verified).
+- [x] Global hotkey (Cmd+Shift+T) to trigger typing without opening the menu.
+- [x] Configurable typing speed and per-character jitter.
+- [x] Preferences window (layout, delays, lead time, toggles) with persisted
+      settings.
+- [x] Unicode fallback (Unicode-direct event posting) for characters no layout maps.
+- [x] Code signing + notarization workflow (`.github/workflows/release.yml`, on
+      `v*` tags) — falls back to an ad-hoc build until the signing secrets are set.
+
 **Planned**
-- [ ] Complete German AltGr layer and dead-key accents; verify UK against BS 4822.
+- [ ] Full dead-key accent support (circumflex, acute, grave, tilde) via
+      multi-stroke sequences; finish verifying the UK layout against BS 4822.
 - [ ] Add Swiss German and other layouts behind the same `KeyboardLayout` protocol.
-- [ ] Global hotkey to trigger typing without opening the menu.
-- [ ] Configurable typing speed and per-character jitter.
-- [ ] Preferences window (default layout, delay) with persisted settings.
-- [ ] Code signing + notarization in CI for distributable releases.
-- [ ] Unicode fallback (Unicode-direct event posting) for characters no layout maps.
+- [ ] Provision the release signing secrets (Developer ID + notarization) to ship
+      a signed, notarized download.
+
+---
+
+## Documentation
+
+More detail lives in [`docs/`](docs/):
+
+- [Usage guide](docs/usage.md) — install, permissions, layouts, the hotkey, and
+  the typical KVM/console workflow.
+- [Architecture](docs/architecture.md) — component and data-flow overview,
+  settings/hotkey/preferences, menu bar lifecycle, and concurrency notes.
+- [Adding a layout](docs/adding-a-layout.md) — implement `KeyboardLayout`, build
+  the `Character → KeyStroke` table, register it, and add tests.
+- [Permissions & troubleshooting](docs/permissions-troubleshooting.md) — the
+  Accessibility permission, re-adding after rebuilds, hotkey conflicts, and
+  characters that don't type.
 
 ---
 
