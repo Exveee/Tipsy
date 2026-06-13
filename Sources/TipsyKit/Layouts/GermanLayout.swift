@@ -3,15 +3,23 @@ import CoreGraphics
 /// German (QWERTZ), Apple layout.
 ///
 /// Groundwork coverage: letters (with Y/Z swap), umlauts, ß, digits and their
-/// shifted symbols, comma/period, whitespace. AltGr (Option) symbols now mapped:
-/// `@ € { } [ ] | \`. `~` is a dead key and is intentionally left unmapped
-/// until multi-stroke support exists.
-/// TODO: dead-key accents (^ ´ ` ~) need multi-stroke support.
+/// shifted symbols, comma/period, whitespace. AltGr (Option) symbols mapped:
+/// `@ € { } [ ] | \` and the non-dead `°`. Dead-key accents `^ ´ \` ~` are
+/// produced as multi-stroke sequences (dead accent + SPACE) via ``strokes(for:)``.
 public struct GermanLayout: KeyboardLayout {
     public let id = "de"
     public let displayName = "German (QWERTZ)"
 
     private let table: [Character: KeyStroke]
+
+    /// Dead-key characters emitted as the literal symbol by pressing the dead
+    /// accent key followed by SPACE on the Apple German layout.
+    private let deadKeys: [Character: [KeyStroke]] = [
+        "^": [KeyStroke(keyCode: VK.grave), KeyStroke(keyCode: VK.space)],
+        "´": [KeyStroke(keyCode: VK.equal), KeyStroke(keyCode: VK.space)],
+        "`": [KeyStroke(keyCode: VK.equal, shift: true), KeyStroke(keyCode: VK.space)],
+        "~": [KeyStroke(keyCode: VK.n, option: true), KeyStroke(keyCode: VK.space)]
+    ]
 
     public init() {
         var t: [Character: KeyStroke] = [:]
@@ -65,7 +73,7 @@ public struct GermanLayout: KeyboardLayout {
         t["}"] = KeyStroke(keyCode: VK.n9, option: true)
         t["|"] = KeyStroke(keyCode: VK.n7, option: true)
         t["\\"] = KeyStroke(keyCode: VK.n7, shift: true, option: true)
-        // TODO: ~ is a dead key (Option+n + space); needs multi-stroke support
+        t["°"] = KeyStroke(keyCode: VK.grave, shift: true)
 
         // Whitespace.
         t[" "] = KeyStroke(keyCode: VK.space)
@@ -77,5 +85,12 @@ public struct GermanLayout: KeyboardLayout {
 
     public func keyStroke(for character: Character) -> KeyStroke? {
         table[character]
+    }
+
+    public func strokes(for character: Character) -> [KeyStroke]? {
+        if let dead = deadKeys[character] {
+            return dead
+        }
+        return keyStroke(for: character).map { [$0] }
     }
 }

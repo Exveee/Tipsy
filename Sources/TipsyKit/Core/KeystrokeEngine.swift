@@ -46,8 +46,10 @@ public final class KeystrokeEngine: @unchecked Sendable {
         let source = CGEventSource(stateID: .combinedSessionState)
 
         for character in text {
-            if let stroke = layout.keyStroke(for: character) {
-                post(stroke, source: source)
+            if let strokes = layout.strokes(for: character) {
+                for stroke in strokes {
+                    post(stroke, source: source)
+                }
             } else if unicodeFallback {
                 if !postUnicode(character, source: source) {
                     skipped.append(character)

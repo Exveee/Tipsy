@@ -29,6 +29,21 @@ func expectEqual<T: Equatable>(_ actual: T,
 }
 
 @MainActor
+func expectEqual(_ actual: [KeyStroke]?,
+                 _ expected: [KeyStroke]?,
+                 _ message: String = "",
+                 file: StaticString = #file,
+                 line: UInt = #line) {
+    if actual == expected {
+        passed += 1
+    } else {
+        failed += 1
+        let suffix = message.isEmpty ? "" : " — \(message)"
+        print("✗ FAIL: \(String(describing: actual)) != \(String(describing: expected))\(suffix)  [\(file):\(line)]")
+    }
+}
+
+@MainActor
 func expectNil<T>(_ actual: T?,
                   _ message: String = "",
                   file: StaticString = #file,
@@ -85,6 +100,28 @@ expectEqual(UKLayout().keyStroke(for: "€"), KeyStroke(keyCode: VK.n2, option: 
 
 // Unsupported character `本` returns nil.
 expectNil(USLayout().keyStroke(for: "本"))
+
+// MARK: - Multi-stroke / dead keys (German)
+
+expectEqual(de.strokes(for: "~"),
+            [KeyStroke(keyCode: VK.n, option: true), KeyStroke(keyCode: VK.space)])
+expectEqual(de.strokes(for: "^"),
+            [KeyStroke(keyCode: VK.grave), KeyStroke(keyCode: VK.space)])
+// Default single-stroke path still works through strokes(for:).
+expectEqual(de.strokes(for: "a"), [KeyStroke(keyCode: VK.a)])
+
+// MARK: - Swiss German layout
+
+let ch = SwissGermanLayout()
+expectEqual(ch.keyStroke(for: "ä"), KeyStroke(keyCode: VK.quote, shift: true))
+expectEqual(ch.keyStroke(for: "à"), KeyStroke(keyCode: VK.quote))
+expectEqual(ch.keyStroke(for: "é"), KeyStroke(keyCode: VK.semicolon))
+expectEqual(ch.keyStroke(for: "ç"), KeyStroke(keyCode: VK.n4, shift: true))
+// QWERTZ swap: 'z' sits on the US 'y' position.
+expectEqual(ch.keyStroke(for: "z"), KeyStroke(keyCode: VK.y))
+
+// Swiss German is registered in the layout registry.
+expectEqual(Layouts.all.contains { $0.id == "ch-de" }, true)
 
 // MARK: - Summary
 
