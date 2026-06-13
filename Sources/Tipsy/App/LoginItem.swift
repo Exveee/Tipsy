@@ -5,6 +5,16 @@ import ServiceManagement
 ///
 /// Only works for the installed `.app` bundle (e.g. in /Applications); it is a
 /// no-op when running via `swift run`, which has no bundle to register.
+///
+/// Security note: both the login item registered here and the system
+/// Accessibility (TCC) grant bind to the bundle's *designated requirement*. A
+/// self-signed or ad-hoc identity yields a weak requirement, so anyone able to
+/// write `/Applications/Tipsy.app` could swap in a replacement bundle and
+/// inherit auto-start plus the Accessibility grant (post-compromise
+/// persistence; see GitHub issue #23). This cannot be enforced from code. For
+/// builds distributed to other machines, sign and notarize with a Developer ID
+/// so these privileges bind to a strong Team-ID-backed requirement; the
+/// self-signed/ad-hoc path is for local/dev use only.
 @MainActor
 enum LoginItem {
 

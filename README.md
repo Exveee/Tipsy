@@ -184,6 +184,11 @@ Tipsy/
 - **Ad-hoc** (fallback when no identity is found) — changes every build, so the
   permission must be re-granted after each rebuild.
 
+> **Security note:** the local self-signed / ad-hoc identity is for local use
+> only. Distributing to other machines should use Developer ID + notarization so
+> the login item and Accessibility grant bind to a strong Team-ID identity,
+> mitigating bundle-replacement persistence (see issue #23).
+
 ### More docs
 
 - [Usage guide](docs/usage.md)
