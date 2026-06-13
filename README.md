@@ -81,6 +81,7 @@ All settings apply live and persist:
 | Cue sound | Rising | Motif played before typing (Rising / Blip / Chime), with volume + **Test** |
 | Trigger hotkey | ⌘⇧V | Rebind via the recorder button |
 | Enable global hotkey | on | Toggle the global trigger |
+| Start Tipsy at login | off | Launch automatically when you log in |
 
 > The default ⌘⇧V also means "paste and match style" in some apps. If that
 > clashes, rebind the hotkey in Preferences.

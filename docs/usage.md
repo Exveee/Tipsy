@@ -96,6 +96,9 @@ Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist
 - **Cue volume** (0–100%, default 70%) — loudness of the cue. **Test sound**
   plays it at the current settings.
 - **Enable global hotkey** (default on) — toggles the global trigger.
+- **Start Tipsy at login** (default off) — registers Tipsy as a login item via
+  `SMAppService` so it launches automatically. Only effective for the installed
+  app in `/Applications`.
 
 ## Typical KVM / console workflow
 

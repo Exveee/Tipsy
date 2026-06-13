@@ -20,6 +20,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     private let hotkeyCheckbox = NSButton()
     private let hotkeyRecorderButton = NSButton()
     private let cueSoundCheckbox = NSButton()
+    private let loginItemCheckbox = NSButton()
     private let cueVariantPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let cueVolumeSlider = NSSlider()
     private let cueVolumeLabel = NSTextField(labelWithString: "")
@@ -32,7 +33,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 470),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 500),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -156,6 +157,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         hotkeyCheckbox.target = self
         hotkeyCheckbox.action = #selector(hotkeyChanged)
         stack.addArrangedSubview(hotkeyCheckbox)
+
+        // Start at login checkbox
+        loginItemCheckbox.setButtonType(.switch)
+        loginItemCheckbox.title = "Start Tipsy at login"
+        loginItemCheckbox.target = self
+        loginItemCheckbox.action = #selector(loginItemChanged)
+        stack.addArrangedSubview(loginItemCheckbox)
     }
 
     /// Builds a horizontal row: a leading label, a control, and an optional
@@ -194,6 +202,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         cueVariantPopup.selectItem(at: variantIndex)
         cueVolumeSlider.doubleValue = Settings.cueVolume
         hotkeyCheckbox.state = Settings.hotkeyEnabled ? .on : .off
+        loginItemCheckbox.state = LoginItem.isEnabled ? .on : .off
         hotkeyRecorderButton.title = currentHotkeyTitle()
 
         updateValueLabels()
@@ -277,6 +286,20 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     @objc private func hotkeyChanged() {
         Settings.hotkeyEnabled = hotkeyCheckbox.state == .on
         onChange?()
+    }
+
+    @objc private func loginItemChanged() {
+        let enable = loginItemCheckbox.state == .on
+        do {
+            try LoginItem.setEnabled(enable)
+        } catch {
+            // Revert the checkbox and report why (e.g. running unbundled).
+            loginItemCheckbox.state = LoginItem.isEnabled ? .on : .off
+            let alert = NSAlert()
+            alert.messageText = "Couldn't change login item"
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
     }
 
     // MARK: - Hotkey recording
