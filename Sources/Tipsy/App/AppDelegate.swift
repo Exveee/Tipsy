@@ -11,7 +11,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var activeLayout: KeyboardLayout
 
     /// Seconds to wait after triggering so the user can focus the target window.
-    private let leadTime: TimeInterval = 3
+    private var leadTime: TimeInterval = 3
+
+    private let hotkey = HotkeyManager()
+    private var preferences: PreferencesWindowController?
 
     override init() {
         activeLayout = layouts[0]
@@ -20,7 +23,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AccessibilityManager.ensureTrusted(prompt: true)
+        applySettings()
         buildStatusItem()
+
+        hotkey.onTrigger = { [weak self] in self?.typeClipboard() }
+        applyHotkeyState()
+    }
+
+    /// Loads persisted settings into the engine, lead time, and active layout.
+    private func applySettings() {
+        engine.characterDelay = Settings.characterDelay
+        engine.jitter = Settings.jitter
+        engine.unicodeFallback = Settings.unicodeFallback
+        leadTime = Settings.leadTime
+        activeLayout = layouts.first { $0.id == Settings.layoutID } ?? layouts[0]
+    }
+
+    private func applyHotkeyState() {
+        if Settings.hotkeyEnabled {
+            hotkey.enable()
+        } else {
+            hotkey.disable()
+        }
     }
 
     private func buildStatusItem() {
@@ -51,6 +75,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         menu.addItem(.separator())
+        let prefs = NSMenuItem(title: "Preferences…",
+                               action: #selector(openPreferences), keyEquivalent: ",")
+        prefs.target = self
+        menu.addItem(prefs)
+
         let quit = NSMenuItem(title: "Quit Tipsy", action: #selector(NSApplication.terminate(_:)),
                               keyEquivalent: "q")
         menu.addItem(quit)
@@ -62,6 +91,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let id = sender.representedObject as? String,
               let layout = layouts.first(where: { $0.id == id }) else { return }
         activeLayout = layout
+        Settings.layoutID = id
+        rebuildMenu()
+    }
+
+    @objc private func openPreferences() {
+        if preferences == nil {
+            let controller = PreferencesWindowController()
+            controller.onChange = { [weak self] in self?.preferencesDidChange() }
+            preferences = controller
+        }
+        preferences?.present()
+    }
+
+    /// Re-applies persisted settings after the user edits them in Preferences.
+    private func preferencesDidChange() {
+        applySettings()
+        applyHotkeyState()
         rebuildMenu()
     }
 
