@@ -19,6 +19,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     private let leadTimeLabel = NSTextField(labelWithString: "")
     private let hotkeyCheckbox = NSButton()
     private let hotkeyRecorderButton = NSButton()
+    private let cueSoundCheckbox = NSButton()
 
     /// Local key-down monitor installed only while recording a new combo.
     private var recordingMonitor: Any?
@@ -27,7 +28,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 300),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 360),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -106,6 +107,13 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         unicodeFallbackCheckbox.action = #selector(unicodeFallbackChanged)
         stack.addArrangedSubview(unicodeFallbackCheckbox)
 
+        // Cue sound checkbox
+        cueSoundCheckbox.setButtonType(.switch)
+        cueSoundCheckbox.title = "Play cue sound before typing"
+        cueSoundCheckbox.target = self
+        cueSoundCheckbox.action = #selector(cueSoundChanged)
+        stack.addArrangedSubview(cueSoundCheckbox)
+
         // Hotkey recorder
         hotkeyRecorderButton.bezelStyle = .rounded
         hotkeyRecorderButton.setButtonType(.momentaryPushIn)
@@ -151,6 +159,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         jitterSlider.doubleValue = Settings.jitter
         leadTimeSlider.doubleValue = Settings.leadTime
         unicodeFallbackCheckbox.state = Settings.unicodeFallback ? .on : .off
+        cueSoundCheckbox.state = Settings.cueSoundEnabled ? .on : .off
         hotkeyCheckbox.state = Settings.hotkeyEnabled ? .on : .off
         hotkeyRecorderButton.title = currentHotkeyTitle()
 
@@ -200,6 +209,12 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     @objc private func unicodeFallbackChanged() {
         Settings.unicodeFallback = unicodeFallbackCheckbox.state == .on
+        onChange?()
+    }
+
+    @objc private func cueSoundChanged() {
+        Settings.cueSoundEnabled = cueSoundCheckbox.state == .on
+        if Settings.cueSoundEnabled { PasteCueSound.shared.play() }  // preview
         onChange?()
     }
 

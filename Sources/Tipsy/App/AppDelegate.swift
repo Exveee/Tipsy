@@ -136,6 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             notify("Grant Accessibility permission in System Settings")
             return
         }
+        if Settings.cueSoundEnabled {
+            PasteCueSound.shared.play()
+        }
         let layout = activeLayout
         DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + leadTime) { [engine] in
             engine.type(text, using: layout)

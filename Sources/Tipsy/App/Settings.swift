@@ -21,6 +21,7 @@ enum Settings {
         static let hotkeyEnabled = "tipsy.hotkeyEnabled"
         static let hotkeyKeyCode = "tipsy.hotkeyKeyCode"
         static let hotkeyModifiers = "tipsy.hotkeyModifiers"
+        static let cueSoundEnabled = "tipsy.cueSoundEnabled"
     }
 
     /// Default trigger combo: ⌘⇧T (virtual key code 17).
@@ -74,5 +75,11 @@ enum Settings {
     static var hotkeyModifiers: UInt {
         get { (defaults.object(forKey: Key.hotkeyModifiers) as? UInt) ?? defaultModifiers }
         set { defaults.set(newValue, forKey: Key.hotkeyModifiers) }
+    }
+
+    /// Whether the distinctive cue sound plays before typing. Defaults to `true`.
+    static var cueSoundEnabled: Bool {
+        get { defaults.object(forKey: Key.cueSoundEnabled) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.cueSoundEnabled) }
     }
 }
