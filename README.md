@@ -1,37 +1,139 @@
 # Tipsy
 
-**Type your clipboard.** A macOS menu bar utility that simulates real keyboard
-input from the contents of your clipboard — for systems where pasting is
-blocked (KVM consoles, remote IPMI/iDRAC/iLO sessions, locked-down VMs,
-hypervisor web consoles, …).
+**Type your clipboard.** A macOS menu bar app that types the contents of your
+clipboard as real keystrokes — for systems where pasting is blocked: KVM/BMC
+consoles (iDRAC, iLO, IPMI, PiKVM), hypervisor web consoles (Proxmox noVNC,
+VMware, Hyper-V), and hardened or air-gapped VMs.
 
-Tipsy reads the clipboard, then posts genuine key-down/key-up events through
-the macOS event system so the target sees physical-like keystrokes. Output
-characters are mapped through a selectable **keyboard layout**, so what you copy
-is what the remote machine actually receives — even when its layout differs from
-yours.
+It reads the clipboard and posts genuine key-down/key-up events, mapped through
+a selectable **keyboard layout** — so what you copy is what the target machine
+receives, even when its layout differs from yours.
 
-> Status: **early groundwork (v0.1.0)**. Core architecture and layout engine are
-> in place; the menu bar app builds and runs, with Preferences, persisted
-> settings, a global hotkey, and Unicode fallback. Layout coverage is being
-> expanded.
+> Status: **v0.1.0**, in active development. Fully usable; layout coverage is
+> still expanding (see [Roadmap](#roadmap)).
 
 ---
 
-## Why
+## Install
 
-Copy/paste fails on many out-of-band management surfaces:
+You only need a Mac with **macOS 13+** and Apple's **Command Line Tools** (no
+Xcode). If `swift --version` doesn't work, install them once:
 
-- KVM-over-IP and BMC consoles (iDRAC, iLO, IPMI, PiKVM)
-- Hypervisor web consoles (Proxmox noVNC, VMware, Hyper-V)
-- Hardened or air-gapped VMs that disable the paste channel
+```bash
+xcode-select --install
+```
 
-The reliable fallback is *typing*. Tipsy automates that: paste-as-keystrokes,
-with the correct national layout, at a console-friendly speed.
+Then:
+
+```bash
+git clone https://github.com/Exveee/Tipsy.git
+cd Tipsy
+
+# 1) One-time: create a local signing cert so the Accessibility
+#    permission sticks across updates (no re-granting later).
+./Scripts/make-signing-cert.sh
+
+# 2) Build and install into /Applications (also appears in Launchpad).
+./Scripts/install.sh release
+
+# 3) Launch it.
+open /Applications/Tipsy.app
+```
+
+> On the very first `install.sh` run a keychain prompt ("codesign wants to use
+> the signing key") may appear — choose **Always Allow**.
+
+### Grant the Accessibility permission
+
+Tipsy synthesizes keystrokes, which macOS gates behind the Accessibility
+permission. On first launch it opens the prompt; otherwise:
+
+1. **System Settings → Privacy & Security → Accessibility**
+2. Add / enable **Tipsy**.
+
+Nothing will type until this is granted. Thanks to the signing cert from step 1,
+you only do this **once** — it survives rebuilds and updates.
 
 ---
 
-## How it works
+## Using it
+
+Tipsy lives in the **menu bar** (clipboard glyph, no Dock icon).
+
+1. Copy the text you need (password, command, config snippet).
+2. Click the menu bar icon → pick the **layout that matches the target machine**.
+3. Choose **Type Clipboard**, or press the global hotkey **⌘⇧V**.
+4. A short cue sound plays and a **lead-time countdown** starts — click into the
+   target field before it ends.
+5. Tipsy types the text at the configured speed.
+
+### Preferences (⌘,)
+
+All settings apply live and persist:
+
+| Setting | Default | What it does |
+|---|---|---|
+| Default layout | German | Layout used for typing |
+| Character delay | 0.012 s | Pause between characters — raise it if a slow console drops input |
+| Jitter | 0 s | Random ± variation per character |
+| Lead time | 3 s | Countdown before typing, to focus the target window |
+| Type unmapped as Unicode | on | Type characters the layout can't map via their Unicode value |
+| Cue sound | Rising | Motif played before typing (Rising / Blip / Chime), with volume + **Test** |
+| Trigger hotkey | ⌘⇧V | Rebind via the recorder button |
+| Enable global hotkey | on | Toggle the global trigger |
+
+> The default ⌘⇧V also means "paste and match style" in some apps. If that
+> clashes, rebind the hotkey in Preferences.
+
+### Shipped layouts
+
+| ID | Layout | Coverage |
+|---|---|---|
+| `de` | German (QWERTZ) | Letters, umlauts, ß, digits, AltGr (`@ € { } [ ] \| \`), dead keys (`^ ´ \` ~`) |
+| `us` | US (QWERTY) | Full printable ASCII |
+| `uk` | UK (QWERTY) | US base + British overrides (`£`, `@`/`"`, `#`/`~`, `€`) — partly hardware-verified |
+| `ch-de` | Swiss German (QWERTZ) | Letters, à/é/è + umlauts (shift), digits — Option layer not yet hardware-verified |
+
+---
+
+## Update / uninstall
+
+Update — pull and reinstall (permission stays granted):
+
+```bash
+git pull
+./Scripts/install.sh release
+```
+
+Uninstall:
+
+```bash
+./Scripts/uninstall.sh           # quit + remove /Applications/Tipsy.app
+./Scripts/uninstall.sh --purge   # also remove preferences + the signing cert
+```
+
+Then remove the **Tipsy** entry under System Settings → Privacy & Security →
+Accessibility (macOS doesn't allow scripting that).
+
+---
+
+## For developers
+
+### Build & test (local, no Xcode, no CI)
+
+```bash
+./Scripts/check.sh       # local CI: swift build + run the test suite
+swift build              # compile only
+swift run Tipsy          # run without bundling (no Dock icon)
+swift run TipsyCheck     # run the test suite on its own
+./Scripts/bundle.sh release   # assemble dist/Tipsy.app (no install)
+```
+
+Tests run as a plain executable (`TipsyCheck`), not XCTest — both XCTest and
+swift-testing are unavailable with Command Line Tools alone, so this keeps tests
+runnable locally. There is no GitHub Actions; everything runs on your machine.
+
+### How it works
 
 ```
 ┌────────────┐   text    ┌──────────────┐   KeyStroke   ┌────────────────┐  CGEvent
@@ -40,235 +142,63 @@ with the correct national layout, at a console-friendly speed.
 └────────────┘           └──────────────┘              └────────────────┘
 ```
 
-1. **ClipboardReader** pulls plain text from `NSPasteboard`.
-2. **KeyboardLayout** maps each `Character` to a layout-independent
-   **`KeyStroke`** (virtual key code + Shift/Option modifiers).
-3. **KeystrokeEngine** posts each stroke as Quartz keyboard events
-   (`CGEvent` → `.cghidEventTap`), with a small inter-character delay (and
-   optional jitter) so slow console targets don't drop input. Characters with
-   no layout mapping are typed directly as Unicode when fallback is enabled.
-4. **AppDelegate** is the menu bar UI: pick a layout, trigger typing, and a
-   short countdown lets you focus the target window first. A distinctive
-   **cue sound** plays when typing is triggered. A **customizable** global
-   hotkey (default **Cmd+Shift+V**) triggers typing without opening the menu,
-   and a **Preferences** window exposes the tuning options — including a hotkey
-   recorder — all persisted across launches.
+1. **ClipboardReader** reads plain text from `NSPasteboard`.
+2. **KeyboardLayout** maps each `Character` to a `KeyStroke` (virtual key code +
+   Shift/Option), or a sequence for dead keys.
+3. **KeystrokeEngine** posts each stroke as a Quartz `CGEvent`
+   (`.cghidEventTap`), with delay + optional jitter. Unmapped characters fall
+   back to direct Unicode posting when enabled.
+4. **AppDelegate** is the menu bar UI; **Settings** persists everything via
+   `UserDefaults`; **HotkeyManager** registers the global trigger.
 
-Synthesizing input requires the **Accessibility** permission
-(`AXIsProcessTrusted`); `AccessibilityManager` checks for it and prompts.
-
----
-
-## Project layout
+### Project layout
 
 ```
 Tipsy/
-├── Package.swift                 # SwiftPM manifest (TipsyKit lib + 2 executables)
+├── Package.swift                 # SwiftPM: TipsyKit lib + Tipsy app + TipsyCheck runner
 ├── Sources/
-│   ├── TipsyKit/                 # Reusable library (imported by app + tests)
-│   │   ├── Core/
-│   │   │   ├── KeyStroke.swift       # Key code + modifier value type
-│   │   │   ├── KeystrokeEngine.swift # Quartz event synthesis
-│   │   │   └── ClipboardReader.swift # NSPasteboard access
-│   │   ├── Layouts/
-│   │   │   ├── KeyboardLayout.swift  # Protocol + Layouts registry
-│   │   │   ├── VirtualKeyCodes.swift # ANSI virtual key-code constants
-│   │   │   ├── USLayout.swift        # US QWERTY (reference, full ASCII)
-│   │   │   ├── GermanLayout.swift    # DE QWERTZ (Y/Z swap, umlauts, ß, dead keys)
-│   │   │   ├── UKLayout.swift        # UK QWERTY (£, @/" swap, #/~)
-│   │   │   └── SwissGermanLayout.swift # CH-DE QWERTZ (à/é/è, umlauts on shift)
-│   │   └── Permissions/
-│   │       └── AccessibilityManager.swift
-│   └── Tipsy/                    # Menu bar app executable (imports TipsyKit)
-│       ├── main.swift            # NSApplication bootstrap (menu bar accessory)
-│       └── App/
-│           ├── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
-│           ├── Settings.swift        # UserDefaults-backed persisted settings
-│           ├── PreferencesWindowController.swift  # Code-built preferences window
-│           ├── HotkeyManager.swift   # Customizable global trigger hotkey
-│           ├── HotkeyFormat.swift    # Hotkey ↔ display/menu formatting
-│           ├── PasteCueSound.swift   # Synthesized cue played before typing
-│           └── TipsyIcon.swift       # Code-drawn menu bar template glyph
-├── Tests/TipsyCheck/             # Plain executable test runner (no XCTest)
-│   └── main.swift                # Self-contained layout-mapping checks
-├── Resources/
-│   ├── Info.plist                # Bundle metadata (LSUIElement menu bar app)
-│   └── AppIcon.icns              # App icon (generated by make-icons.swift)
+│   ├── TipsyKit/                 # Reusable library (Core / Layouts / Permissions)
+│   └── Tipsy/                    # Menu bar app (main.swift + App/)
+├── Tests/TipsyCheck/             # Plain executable test runner
+├── Resources/                    # Info.plist, AppIcon.icns
 └── Scripts/
-    ├── bundle.sh                 # Build → assemble Tipsy.app (no Xcode needed)
-    ├── install.sh                # Build → install into /Applications
-    ├── make-icons.swift          # Render the app icon .iconset
+    ├── install.sh / uninstall.sh # Install to / remove from /Applications
+    ├── bundle.sh                 # Build → assemble Tipsy.app
     ├── make-signing-cert.sh      # Self-signed cert for stable permissions
-    ├── check.sh                  # Local CI: swift build + run TipsyCheck
-    └── release.sh                # Local signed/notarized release flow
+    ├── make-icons.swift          # Render the app icon .iconset
+    ├── check.sh                  # Local build + test
+    └── release.sh                # Signed/notarized build (Developer ID env vars)
 ```
 
-### Shipped layouts
+### Code signing
 
-| ID   | Layout            | Coverage                                        |
-|------|-------------------|-------------------------------------------------|
-| `de`    | German (QWERTZ)       | Letters, umlauts, ß, digits, AltGr (`@ € { } [ ] \| \`), dead keys (`^ ´ \` ~`) |
-| `us`    | US (QWERTY)           | Full printable ASCII                            |
-| `ch-de` | Swiss German (QWERTZ) | Letters, à/é/è + umlauts (shift), digits — Option layer *unverified on hardware* |
-| `uk` | UK (QWERTY)       | US base + British overrides — *to verify*       |
+`bundle.sh` picks the identity automatically:
+
+- **Local self-signed** (`Tipsy Local Signing`, from `make-signing-cert.sh`) —
+  stable designated requirement, so the Accessibility grant persists. Recommended
+  for everyday use. Not a trusted/distributable signature.
+- **Developer ID** — pass `SIGN_IDENTITY="Developer ID Application: … (TEAMID)"`
+  for a signature other Macs accept; `release.sh` adds notarization when the
+  `AC_API_*` env vars are set. Requires a paid Apple Developer account.
+- **Ad-hoc** (fallback when no identity is found) — changes every build, so the
+  permission must be re-granted after each rebuild.
+
+### More docs
+
+- [Usage guide](docs/usage.md)
+- [Architecture](docs/architecture.md)
+- [Adding a layout](docs/adding-a-layout.md)
+- [Permissions & troubleshooting](docs/permissions-troubleshooting.md)
 
 ---
 
-## Build & run
+## Roadmap
 
-### Prerequisites
-
-- **macOS 13 (Ventura) or newer.**
-- **Swift 6 toolchain.** Xcode is *not* required — the Apple **Command Line
-  Tools** are enough for everything, including the tests (they run as a plain
-  executable, not XCTest). Install them with:
-  ```bash
-  xcode-select --install
-  ```
-  Verify: `swift --version` should report Swift 6.x.
-- No third-party dependencies; the package resolves nothing from the network.
-
-The build produces a binary for your Mac's native architecture (Apple silicon
-or Intel).
-
-### Quick start
-
-```bash
-git clone https://github.com/Exveee/Tipsy.git
-cd Tipsy
-
-# Build the app bundle (release, ad-hoc signed) into ./dist
-./Scripts/bundle.sh release
-
-# Launch it
-open dist/Tipsy.app
-```
-
-To get Tipsy into **Launchpad / the Applications folder**, install it:
-
-```bash
-./Scripts/install.sh release      # builds, then copies to /Applications/Tipsy.app
-open /Applications/Tipsy.app
-```
-
-`bundle.sh` compiles with SwiftPM, assembles `dist/Tipsy.app`
-(`Contents/MacOS/Tipsy` + `Info.plist` + regenerated `AppIcon.icns`), and
-ad-hoc signs it. Pass `debug` instead of `release` for a faster, unoptimized
-build.
-
-### Other commands
-
-```bash
-swift build                  # compile only (debug)
-swift run Tipsy              # build + run without bundling (no Dock icon)
-./Scripts/check.sh           # local CI: swift build + run the TipsyCheck test suite
-swift run TipsyCheck         # run the test suite on its own
-./Scripts/make-signing-cert.sh  # one-time: stable signature (see below)
-./Scripts/release.sh         # signed + notarized build (needs signing env vars)
-```
-
-### Stable permissions across rebuilds
-
-macOS keys the Accessibility (TCC) grant to the app's code-signing **designated
-requirement**. An ad-hoc signature changes every build, so you'd re-grant each
-time. Run once:
-
-```bash
-./Scripts/make-signing-cert.sh   # creates a self-signed "Tipsy Local Signing" cert
-./Scripts/bundle.sh release      # auto-detects and signs with it
-```
-
-`bundle.sh` then signs with that identity automatically; the designated
-requirement (`identifier "de.rabbgmbh.tipsy" and certificate leaf = …`) stays
-constant, so the Accessibility grant **persists across rebuilds**. Grant it once
-after switching (the signature changes from ad-hoc), then it sticks.
-
-This is *not* a Developer ID cert — that needs a paid Apple Developer account
-and is only required to distribute/notarize the app for other Macs. For that,
-pass `SIGN_IDENTITY="Developer ID Application: … (TEAMID)"` to `bundle.sh` /
-`release.sh`.
-
-### First run
-
-1. Launch `dist/Tipsy.app`. It runs as a **menu bar app** — no Dock icon; look
-   for the clipboard glyph (**⌨︎**-style) in the menu bar.
-2. On first launch it requests **Accessibility** permission (required to
-   synthesize keystrokes). Approve it in **System Settings → Privacy & Security
-   → Accessibility** and make sure **Tipsy** is toggled on. Nothing will type
-   until this is granted.
-3. Copy some text, then menu bar icon → **Type Clipboard**, or press the global
-   hotkey **⌘⇧V**.
-
-> **Re-granting after a rebuild:** with the default *ad-hoc* signature, macOS
-> keys the grant to that exact binary, so after `bundle.sh` you may need to
-> remove and re-add Tipsy in the Accessibility list (the `−` then `+` buttons).
-> Run `./Scripts/make-signing-cert.sh` once (see
-> [Stable permissions](#stable-permissions-across-rebuilds)) to make the grant
-> persist across rebuilds.
-
----
-
-## Infrastructure & roadmap
-
-**Toolchain**
-- Swift Package Manager (no Xcode project checked in — keeps the repo lean).
-  `Scripts/bundle.sh` produces the `.app` bundle directly from SPM output, so a
-  GUI app ships without an Xcode project. A `TipsyKit` library holds the
-  reusable logic, imported by both the app and the test runner.
-
-**Local build + test** (`./Scripts/check.sh`)
-- Runs `swift build` then `swift run TipsyCheck` (a plain executable test runner
-  that replaces XCTest — both XCTest and swift-testing are unavailable with
-  Command Line Tools only). Everything runs locally; there is no GitHub Actions.
-
-**Local release** (`./Scripts/release.sh`)
-- Builds and assembles `dist/Tipsy.app` via `bundle.sh`. When `SIGN_IDENTITY` is
-  a real Developer ID and the `AC_API_*` notarization env vars are set, it zips,
-  submits to `notarytool`, staples, and re-zips; otherwise it produces the
-  ad-hoc app and says so.
-
-**Done**
-- [x] German Option (AltGr) layer: `@ € { } [ ] | \` mapped (`~` is a dead key,
-      still unmapped).
-- [x] UK British overrides: `£`, `@`/`"` swap, `#`/`~`, `€` (Option layer only
-      partially verified).
-- [x] Global hotkey to trigger typing without opening the menu — customizable
-      via a recorder in Preferences (default Cmd+Shift+V).
-- [x] German dead-key accents (`^ ´ ` ~`) via multi-stroke sequences.
-- [x] Swiss German (`ch-de`) layout (Option layer still to be hardware-verified).
-- [x] Configurable typing speed and per-character jitter.
-- [x] Preferences window (layout, delays, lead time, toggles) with persisted
-      settings.
-- [x] Unicode fallback (Unicode-direct event posting) for characters no layout maps.
-- [x] Code signing + notarization flow (`./Scripts/release.sh`) — falls back to
-      an ad-hoc build until the signing/notarization env vars are set.
-
-**Planned**
-- [ ] Verify the UK and Swiss German Option layers against real hardware
-      (UK vs BS 4822; CH-DE brackets/braces/`@`).
+- [ ] Verify the UK and Swiss German Option layers on real hardware.
 - [ ] Dead-key accents producing precomposed letters (é è ñ …), not just the
       standalone accent symbols.
-- [ ] Add more layouts behind the same `KeyboardLayout` protocol.
-- [ ] Provision the release signing material (Developer ID + notarization keys)
-      to ship a signed, notarized download.
-
----
-
-## Documentation
-
-More detail lives in [`docs/`](docs/):
-
-- [Usage guide](docs/usage.md) — install, permissions, layouts, the hotkey, and
-  the typical KVM/console workflow.
-- [Architecture](docs/architecture.md) — component and data-flow overview,
-  settings/hotkey/preferences, menu bar lifecycle, and concurrency notes.
-- [Adding a layout](docs/adding-a-layout.md) — implement `KeyboardLayout`, build
-  the `Character → KeyStroke` table, register it, and add tests.
-- [Permissions & troubleshooting](docs/permissions-troubleshooting.md) — the
-  Accessibility permission, re-adding after rebuilds, hotkey conflicts, and
-  characters that don't type.
-
----
+- [ ] Add more keyboard layouts.
+- [ ] Optional Developer ID signing + notarization for distribution beyond this team.
 
 ## License
 
