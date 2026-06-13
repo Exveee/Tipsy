@@ -50,7 +50,7 @@ with the correct national layout, at a console-friendly speed.
 4. **AppDelegate** is the menu bar UI: pick a layout, trigger typing, and a
    short countdown lets you focus the target window first. A distinctive
    **cue sound** plays when typing is triggered. A **customizable** global
-   hotkey (default **Cmd+Shift+T**) triggers typing without opening the menu,
+   hotkey (default **Cmd+Shift+V**) triggers typing without opening the menu,
    and a **Preferences** window exposes the tuning options — including a hotkey
    recorder — all persisted across launches.
 
@@ -114,24 +114,66 @@ Tipsy/
 
 ## Build & run
 
-Requires macOS 13+ and the Swift 6 toolchain. **Command Line Tools is enough** —
-no Xcode needed for anything, including the tests (they run as a plain
-executable, not XCTest).
+### Prerequisites
+
+- **macOS 13 (Ventura) or newer.**
+- **Swift 6 toolchain.** Xcode is *not* required — the Apple **Command Line
+  Tools** are enough for everything, including the tests (they run as a plain
+  executable, not XCTest). Install them with:
+  ```bash
+  xcode-select --install
+  ```
+  Verify: `swift --version` should report Swift 6.x.
+- No third-party dependencies; the package resolves nothing from the network.
+
+The build produces a binary for your Mac's native architecture (Apple silicon
+or Intel).
+
+### Quick start
 
 ```bash
-# Build + run the test suite (local CI)
-./Scripts/check.sh
+git clone https://github.com/Exveee/Tipsy.git
+cd Tipsy
 
-# Build the executable on its own
-swift build
-
-# Assemble a runnable Tipsy.app (ad-hoc signed) into ./dist
+# Build the app bundle (release, ad-hoc signed) into ./dist
 ./Scripts/bundle.sh release
+
+# Launch it
 open dist/Tipsy.app
 ```
 
-On first run, grant **System Settings → Privacy & Security → Accessibility**
-permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
+`bundle.sh` compiles with SwiftPM, assembles `dist/Tipsy.app`
+(`Contents/MacOS/Tipsy` + `Info.plist` + regenerated `AppIcon.icns`), and
+ad-hoc signs it. Pass `debug` instead of `release` for a faster, unoptimized
+build.
+
+### Other commands
+
+```bash
+swift build              # compile only (debug)
+swift run Tipsy          # build + run without bundling (no Dock icon)
+./Scripts/check.sh       # local CI: swift build + run the TipsyCheck test suite
+swift run TipsyCheck     # run the test suite on its own
+./Scripts/release.sh     # signed + notarized build (needs signing env vars)
+```
+
+### First run
+
+1. Launch `dist/Tipsy.app`. It runs as a **menu bar app** — no Dock icon; look
+   for the clipboard glyph (**⌨︎**-style) in the menu bar.
+2. On first launch it requests **Accessibility** permission (required to
+   synthesize keystrokes). Approve it in **System Settings → Privacy & Security
+   → Accessibility** and make sure **Tipsy** is toggled on. Nothing will type
+   until this is granted.
+3. Copy some text, then menu bar icon → **Type Clipboard**, or press the global
+   hotkey **⌘⇧V**.
+
+> **Re-granting after a rebuild:** the build is *ad-hoc signed*, so macOS keys
+> the Accessibility grant to that exact binary. After running `bundle.sh` again
+> you may need to remove and re-add Tipsy in the Accessibility list (the `−`
+> then `+` buttons), or toggle it off and on. A real Developer ID signature
+> (`./Scripts/release.sh` with signing env vars) makes the grant stable across
+> rebuilds.
 
 ---
 
@@ -160,7 +202,7 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
 - [x] UK British overrides: `£`, `@`/`"` swap, `#`/`~`, `€` (Option layer only
       partially verified).
 - [x] Global hotkey to trigger typing without opening the menu — customizable
-      via a recorder in Preferences (default Cmd+Shift+T).
+      via a recorder in Preferences (default Cmd+Shift+V).
 - [x] German dead-key accents (`^ ´ ` ~`) via multi-stroke sequences.
 - [x] Swiss German (`ch-de`) layout (Option layer still to be hardware-verified).
 - [x] Configurable typing speed and per-character jitter.

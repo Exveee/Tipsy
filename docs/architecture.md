@@ -26,7 +26,7 @@ Sources/
         ├── AppDelegate.swift      # Menu bar UI + typing trigger
         ├── Settings.swift         # UserDefaults-backed settings
         ├── PreferencesWindowController.swift
-        └── HotkeyManager.swift    # Global Cmd+Shift+T hotkey
+        └── HotkeyManager.swift    # Configurable global hotkey (default ⌘⇧V)
 ```
 
 ## Data flow
@@ -115,7 +115,7 @@ survive relaunches; defaults are returned for keys that were never written.
 | `tipsy.jitter` | `0` | Random ± variation on each delay |
 | `tipsy.unicodeFallback` | `true` | Type unmapped chars as Unicode |
 | `tipsy.leadTime` | `3` | Countdown before typing starts |
-| `tipsy.hotkeyEnabled` | `true` | Global Cmd+Shift+T active |
+| `tipsy.hotkeyEnabled` | `true` | Global hotkey active |
 
 `PreferencesWindowController` is a code-built (no nib) window with a layout
 popup, sliders for character delay (0–0.2s), jitter (0–0.1s), and lead time
@@ -126,7 +126,8 @@ live.
 
 ## Global hotkey
 
-`HotkeyManager` registers a fixed **Cmd+Shift+T** combo using `NSEvent`
+`HotkeyManager` registers a **configurable** combo (default **Cmd+Shift+V**,
+set via the Preferences recorder and persisted in `Settings`) using `NSEvent`
 monitors rather than a Carbon hot-key, so no extra entitlement is needed:
 
 - A **global** monitor delivers the event while Tipsy is in the background.
@@ -135,7 +136,7 @@ monitors rather than a Carbon hot-key, so no extra entitlement is needed:
 
 Global monitors require the Accessibility permission, which the app already
 holds for keystroke synthesis. Note the global monitor observes but does not
-*consume* the event — other apps still receive Cmd+Shift+T (see
+*consume* the event — other apps still receive the combo (see
 [permissions-troubleshooting.md](permissions-troubleshooting.md)).
 
 ## Concurrency notes

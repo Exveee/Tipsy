@@ -47,18 +47,20 @@ across updates. Ad-hoc dev builds are the case that needs re-adding.
 
 ## Hotkey conflicts
 
-The global trigger is **Cmd+Shift+T**, implemented with `NSEvent` global and
-local monitors in `HotkeyManager` (no Carbon hot-key / extra entitlement).
+The global trigger defaults to **Cmd+Shift+V** and is customizable via the
+recorder in **Preferences → Trigger hotkey**. It is implemented with `NSEvent`
+global and local monitors in `HotkeyManager` (no Carbon hot-key / extra
+entitlement).
 
 Be aware:
 
-- **⌘⇧T is also the browser "reopen closed tab" shortcut** (Safari, Chrome,
-  Firefox). Tipsy's **global monitor observes the event but does not consume
-  it** — `NSEvent.addGlobalMonitorForEvents` is observe-only by design. So when
-  a browser is focused and you press ⌘⇧T, *both* things happen: the browser
-  reopens a tab **and** Tipsy starts its countdown. If that's disruptive,
-  disable the hotkey in **Preferences → Enable global hotkey** and use the menu
-  item instead.
+- **The global monitor observes events but does not consume them** —
+  `NSEvent.addGlobalMonitorForEvents` is observe-only by design. So if the
+  configured combo also means something in the focused app (e.g. ⌘⇧V is "paste
+  and match style" in many editors), *both* happen: that app acts on the combo
+  **and** Tipsy starts its countdown. If that's disruptive, rebind the hotkey to
+  a less common combo in Preferences, or disable it (**Preferences → Enable
+  global hotkey**) and use the menu item instead.
 - The global monitor only fires while another app is focused. When Tipsy itself
   is key, the **local** monitor handles the combo (and forwards the event on).
 - The hotkey relies on the same Accessibility permission as typing; if that

@@ -24,8 +24,8 @@ enum Settings {
         static let cueSoundEnabled = "tipsy.cueSoundEnabled"
     }
 
-    /// Default trigger combo: ⌘⇧T (virtual key code 17).
-    private static let defaultKeyCode = 17
+    /// Default trigger combo: ⌘⇧V (virtual key code 9).
+    private static let defaultKeyCode = 9
     private static let defaultModifiers = ([.command, .shift] as NSEvent.ModifierFlags).rawValue
 
     /// Identifier of the default keyboard layout. Defaults to the first layout.
@@ -64,7 +64,7 @@ enum Settings {
         set { defaults.set(newValue, forKey: Key.hotkeyEnabled) }
     }
 
-    /// Virtual key code of the trigger hotkey. Defaults to `17` (the 'T' key).
+    /// Virtual key code of the trigger hotkey. Defaults to `9` (the 'V' key).
     static var hotkeyKeyCode: Int {
         get { defaults.object(forKey: Key.hotkeyKeyCode) as? Int ?? defaultKeyCode }
         set { defaults.set(newValue, forKey: Key.hotkeyKeyCode) }

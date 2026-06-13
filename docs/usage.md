@@ -64,13 +64,14 @@ target window before typing starts — otherwise the keystrokes would land in
 Tipsy's own menu or the wrong app. Set it long enough to comfortably click into
 the destination.
 
-### The global hotkey: Cmd+Shift+T
+### The global hotkey: Cmd+Shift+V (customizable)
 
-With the hotkey enabled (default), **⌘⇧T** triggers typing from anywhere
+With the hotkey enabled (default), **⌘⇧V** triggers typing from anywhere
 without opening the menu — handy when your hands are already on the keyboard in
 a console window. The same lead-time countdown applies, so press it, then focus
-the target. You can disable the hotkey in Preferences. Note this combo is also
-the browser "reopen closed tab" shortcut — see
+the target. Rebind it with the recorder in **Preferences → Trigger hotkey**, or
+disable it entirely. Note the default combo is "paste and match style" in many
+editors — see
 [permissions-troubleshooting.md](permissions-troubleshooting.md#hotkey-conflicts).
 
 ## Preferences
@@ -87,7 +88,11 @@ Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist
 - **Type unmapped characters as Unicode** (default on) — when a character has
   no mapping in the chosen layout, type it directly via its Unicode value
   instead of skipping it.
-- **Enable global hotkey (⌘⇧T)** (default on) — toggles the global trigger.
+- **Trigger hotkey** — click the recorder button and press a new combo to
+  rebind the global trigger (default ⌘⇧V).
+- **Play cue sound before typing** (default on) — a short distinctive tone when
+  typing is triggered.
+- **Enable global hotkey** (default on) — toggles the global trigger.
 
 ## Typical KVM / console workflow
 
@@ -95,7 +100,7 @@ Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist
    Proxmox noVNC, …) and click into the field you need to fill.
 2. Set Tipsy's layout to match the **target** machine's keyboard layout.
 3. Copy the text (a password, a config snippet, a long command) on your Mac.
-4. Press **⌘⇧T** (or use the menu), then click back into the console field.
+4. Press **⌘⇧V** (or use the menu), then click back into the console field.
 5. Tipsy types the text after the lead time, at the configured speed. If some
    characters can't be typed by the layout and Unicode fallback is off, Tipsy
    reports which ones were skipped.
