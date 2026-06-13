@@ -48,10 +48,10 @@ with the correct national layout, at a console-friendly speed.
    optional jitter) so slow console targets don't drop input. Characters with
    no layout mapping are typed directly as Unicode when fallback is enabled.
 4. **AppDelegate** is the menu bar UI: pick a layout, trigger typing, and a
-   short countdown lets you focus the target window first. A global
-   **Cmd+Shift+T** hotkey triggers typing without opening the menu, and a
-   **Preferences** window exposes the tuning options, all persisted across
-   launches.
+   short countdown lets you focus the target window first. A **customizable**
+   global hotkey (default **Cmd+Shift+T**) triggers typing without opening the
+   menu, and a **Preferences** window exposes the tuning options — including a
+   hotkey recorder — all persisted across launches.
 
 Synthesizing input requires the **Accessibility** permission
 (`AXIsProcessTrusted`); `AccessibilityManager` checks for it and prompts.
@@ -73,8 +73,9 @@ Tipsy/
 │   │   │   ├── KeyboardLayout.swift  # Protocol + Layouts registry
 │   │   │   ├── VirtualKeyCodes.swift # ANSI virtual key-code constants
 │   │   │   ├── USLayout.swift        # US QWERTY (reference, full ASCII)
-│   │   │   ├── GermanLayout.swift    # DE QWERTZ (Y/Z swap, umlauts, ß)
-│   │   │   └── UKLayout.swift        # UK QWERTY (£, @/" swap, #/~)
+│   │   │   ├── GermanLayout.swift    # DE QWERTZ (Y/Z swap, umlauts, ß, dead keys)
+│   │   │   ├── UKLayout.swift        # UK QWERTY (£, @/" swap, #/~)
+│   │   │   └── SwissGermanLayout.swift # CH-DE QWERTZ (à/é/è, umlauts on shift)
 │   │   └── Permissions/
 │   │       └── AccessibilityManager.swift
 │   └── Tipsy/                    # Menu bar app executable (imports TipsyKit)
@@ -83,7 +84,7 @@ Tipsy/
 │           ├── AppDelegate.swift     # Menu bar: layout picker + "Type Clipboard"
 │           ├── Settings.swift        # UserDefaults-backed persisted settings
 │           ├── PreferencesWindowController.swift  # Code-built preferences window
-│           └── HotkeyManager.swift   # Global Cmd+Shift+T hotkey
+│           └── HotkeyManager.swift   # Customizable global trigger hotkey
 ├── Tests/TipsyCheck/             # Plain executable test runner (no XCTest)
 │   └── main.swift                # Self-contained layout-mapping checks
 ├── Resources/Info.plist          # Bundle metadata (LSUIElement menu bar app)
@@ -97,8 +98,9 @@ Tipsy/
 
 | ID   | Layout            | Coverage                                        |
 |------|-------------------|-------------------------------------------------|
-| `de` | German (QWERTZ)   | Letters, umlauts, ß, digits, common AltGr — *expanding* |
-| `us` | US (QWERTY)       | Full printable ASCII                            |
+| `de`    | German (QWERTZ)       | Letters, umlauts, ß, digits, AltGr (`@ € { } [ ] \| \`), dead keys (`^ ´ \` ~`) |
+| `us`    | US (QWERTY)           | Full printable ASCII                            |
+| `ch-de` | Swiss German (QWERTZ) | Letters, à/é/è + umlauts (shift), digits — Option layer *unverified on hardware* |
 | `uk` | UK (QWERTY)       | US base + British overrides — *to verify*       |
 
 ---
@@ -150,7 +152,10 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
       still unmapped).
 - [x] UK British overrides: `£`, `@`/`"` swap, `#`/`~`, `€` (Option layer only
       partially verified).
-- [x] Global hotkey (Cmd+Shift+T) to trigger typing without opening the menu.
+- [x] Global hotkey to trigger typing without opening the menu — customizable
+      via a recorder in Preferences (default Cmd+Shift+T).
+- [x] German dead-key accents (`^ ´ ` ~`) via multi-stroke sequences.
+- [x] Swiss German (`ch-de`) layout (Option layer still to be hardware-verified).
 - [x] Configurable typing speed and per-character jitter.
 - [x] Preferences window (layout, delays, lead time, toggles) with persisted
       settings.
@@ -159,9 +164,11 @@ permission to Tipsy, then use the menu bar **⌨︎** icon → *Type Clipboard*.
       an ad-hoc build until the signing/notarization env vars are set.
 
 **Planned**
-- [ ] Full dead-key accent support (circumflex, acute, grave, tilde) via
-      multi-stroke sequences; finish verifying the UK layout against BS 4822.
-- [ ] Add Swiss German and other layouts behind the same `KeyboardLayout` protocol.
+- [ ] Verify the UK and Swiss German Option layers against real hardware
+      (UK vs BS 4822; CH-DE brackets/braces/`@`).
+- [ ] Dead-key accents producing precomposed letters (é è ñ …), not just the
+      standalone accent symbols.
+- [ ] Add more layouts behind the same `KeyboardLayout` protocol.
 - [ ] Provision the release signing material (Developer ID + notarization keys)
       to ship a signed, notarized download.
 
