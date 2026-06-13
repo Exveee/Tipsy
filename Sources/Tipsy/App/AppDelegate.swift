@@ -64,8 +64,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
 
         let type = NSMenuItem(title: "Type Clipboard (\(Int(leadTime))s)",
-                              action: #selector(typeClipboard), keyEquivalent: "t")
+                              action: #selector(typeClipboard), keyEquivalent: "")
         type.target = self
+        // Mirror the configured global hotkey as the menu accelerator (only when
+        // it maps to a plain character; otherwise show no shortcut).
+        if Settings.hotkeyEnabled,
+           let ke = HotkeyFormat.menuKeyEquivalent(for: UInt16(Settings.hotkeyKeyCode)) {
+            type.keyEquivalent = ke
+            type.keyEquivalentModifierMask =
+                NSEvent.ModifierFlags(rawValue: Settings.hotkeyModifiers)
+                    .intersection(HotkeyFormat.relevantModifiers)
+        }
         menu.addItem(type)
         menu.addItem(.separator())
 

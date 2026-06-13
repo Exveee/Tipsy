@@ -159,7 +159,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     /// Display string for the currently persisted trigger combo.
     private func currentHotkeyTitle() -> String {
-        Self.hotkeyDisplayString(
+        HotkeyFormat.display(
             keyCode: UInt16(Settings.hotkeyKeyCode),
             modifiers: NSEvent.ModifierFlags(rawValue: Settings.hotkeyModifiers)
         )
@@ -253,83 +253,4 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         hotkeyRecorderButton.title = restore ?? currentHotkeyTitle()
     }
 
-    // MARK: - Formatting
-
-    /// Formats a `(keyCode, modifiers)` pair into a human-readable combo such as
-    /// `⌘⇧T`. Modifier symbols are emitted in the order ⌃⌥⇧⌘.
-    static func hotkeyDisplayString(keyCode: UInt16,
-                                    modifiers: NSEvent.ModifierFlags) -> String {
-        var result = ""
-        if modifiers.contains(.control) { result += "⌃" }
-        if modifiers.contains(.option) { result += "⌥" }
-        if modifiers.contains(.shift) { result += "⇧" }
-        if modifiers.contains(.command) { result += "⌘" }
-        result += keyName(for: keyCode)
-        return result
-    }
-
-    /// Maps common virtual key codes to display names, with a `keyN` fallback.
-    private static func keyName(for keyCode: UInt16) -> String {
-        switch keyCode {
-        case 0: return "A"
-        case 1: return "S"
-        case 2: return "D"
-        case 3: return "F"
-        case 4: return "H"
-        case 5: return "G"
-        case 6: return "Z"
-        case 7: return "X"
-        case 8: return "C"
-        case 9: return "V"
-        case 11: return "B"
-        case 12: return "Q"
-        case 13: return "W"
-        case 14: return "E"
-        case 15: return "R"
-        case 16: return "Y"
-        case 17: return "T"
-        case 18: return "1"
-        case 19: return "2"
-        case 20: return "3"
-        case 21: return "4"
-        case 22: return "6"
-        case 23: return "5"
-        case 24: return "="
-        case 25: return "9"
-        case 26: return "7"
-        case 28: return "8"
-        case 29: return "0"
-        case 31: return "O"
-        case 32: return "U"
-        case 34: return "I"
-        case 35: return "P"
-        case 37: return "L"
-        case 38: return "J"
-        case 40: return "K"
-        case 45: return "N"
-        case 46: return "M"
-        case 48: return "⇥"   // Tab
-        case 49: return "Space"
-        case 36: return "↩"   // Return
-        case 51: return "⌫"   // Delete
-        case 53: return "⎋"   // Escape
-        case 123: return "←"
-        case 124: return "→"
-        case 125: return "↓"
-        case 126: return "↑"
-        case 122: return "F1"
-        case 120: return "F2"
-        case 99: return "F3"
-        case 118: return "F4"
-        case 96: return "F5"
-        case 97: return "F6"
-        case 98: return "F7"
-        case 100: return "F8"
-        case 101: return "F9"
-        case 109: return "F10"
-        case 103: return "F11"
-        case 111: return "F12"
-        default: return "key\(keyCode)"
-        }
-    }
 }
