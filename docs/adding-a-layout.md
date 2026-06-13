@@ -98,15 +98,29 @@ t["{"] = KeyStroke(keyCode: VK.quote, option: true)
 The modifiers map to `CGEventFlags` (`.maskShift`, `.maskAlternate`)
 automatically via `KeyStroke.flags`.
 
-## 4. Dead keys are not yet supported
+## 4. Dead keys (multi-stroke characters)
 
-Tipsy posts exactly one key-down/key-up pair per character, so it **cannot**
-type characters that require a dead-key sequence (e.g. Apple German `~` =
-Option+N then Space, or accent composition like `^`, `´`, `` ` ``). Leave those
-characters **unmapped** (return `nil`) rather than guessing a single stroke —
-returning `nil` lets the Unicode fallback handle them and keeps the table
-honest. Document any such gaps in the layout's doc comment, as `GermanLayout`
-does for `~`.
+Some characters need more than one key press — e.g. Apple German `~` =
+Option+N then Space, or accents like `^`, `´`, `` ` ``. For these, override
+`strokes(for:)` to return a **sequence** of `KeyStroke`s. The default
+implementation just wraps `keyStroke(for:)` in a one-element array, so you only
+override when a layout has dead keys:
+
+```swift
+func strokes(for character: Character) -> [KeyStroke]? {
+    deadKeys[character] ?? keyStroke(for: character).map { [$0] }
+}
+
+private let deadKeys: [Character: [KeyStroke]] = [
+    "~": [KeyStroke(keyCode: VK.n, option: true), KeyStroke(keyCode: VK.space)],
+    // ...
+]
+```
+
+`KeystrokeEngine` posts every stroke in the sequence for that character. See
+`GermanLayout` for a complete example. If you are *not* confident about a
+dead-key sequence, leave the character unmapped (`nil`) — the Unicode fallback
+handles it — and note the gap in the layout's doc comment.
 
 ## 5. Register the layout
 

@@ -18,6 +18,7 @@ Sources/
 │   │   ├── KeyboardLayout.swift   # Protocol + Layouts registry
 │   │   ├── VirtualKeyCodes.swift  # ANSI virtual key-code constants (VK)
 │   │   ├── USLayout.swift / GermanLayout.swift / UKLayout.swift
+│   │   └── SwissGermanLayout.swift
 │   └── Permissions/
 │       └── AccessibilityManager.swift
 └── Tipsy/                     # Menu bar app executable (imports TipsyKit)
@@ -26,7 +27,11 @@ Sources/
         ├── AppDelegate.swift      # Menu bar UI + typing trigger
         ├── Settings.swift         # UserDefaults-backed settings
         ├── PreferencesWindowController.swift
-        └── HotkeyManager.swift    # Configurable global hotkey (default ⌘⇧V)
+        ├── HotkeyManager.swift    # Configurable global hotkey (default ⌘⇧V)
+        ├── HotkeyFormat.swift     # Hotkey ↔ display string / menu key equivalent
+        ├── PasteCueSound.swift    # Synthesized cue motifs (AVAudioEngine)
+        ├── LoginItem.swift        # Start-at-login via SMAppService
+        └── TipsyIcon.swift        # Code-drawn menu bar template glyph
 ```
 
 ## Data flow
@@ -45,12 +50,16 @@ Typing the clipboard is a four-stage pipeline:
 2. **`KeyboardLayout.keyStroke(for:)`** maps each `Character` to a
    layout-independent **`KeyStroke`** — a virtual key code plus `shift` /
    `option` flags — or returns `nil` if the layout has no mapping for that
-   character.
+   character. **`strokes(for:)`** returns a *sequence* of `KeyStroke`s, so a
+   single character can require multiple presses — used for **dead keys** (e.g.
+   German `~` = Option+n then Space). Its default implementation wraps the
+   single `keyStroke(for:)` result.
 3. **`KeystrokeEngine.type(_:using:)`** walks the string character by
-   character. For each character it either posts the resolved `KeyStroke`, or
-   (when `unicodeFallback` is on) types the character directly via its UTF-16
-   code units, or records it as skipped. It returns the array of characters it
-   could not type so the caller can warn the user.
+   character. For each character it posts the whole `strokes(for:)` sequence,
+   or (when `unicodeFallback` is on) types the character directly via its UTF-16
+   code units, or records it as skipped. A per-character delay (plus optional
+   `jitter`) paces the output. It returns the array of characters it could not
+   type so the caller can warn the user.
 4. Each stroke is posted as a key-down / key-up `CGEvent` pair to
    `.cghidEventTap`, so the focused application sees genuine hardware-like
    keystrokes — the path that works where clipboard paste is blocked.
@@ -81,14 +90,16 @@ values directly.
 2. `applySettings()` — loads persisted values into the engine
    (`characterDelay`, `jitter`, `unicodeFallback`), the `leadTime`, and the
    `activeLayout`.
-3. `buildStatusItem()` — creates the `NSStatusItem` (the `⌨︎` menu bar icon)
-   and builds its menu.
+3. `buildStatusItem()` — creates the `NSStatusItem` with the clipboard glyph
+   from `TipsyIcon.statusItemImage()` (a code-drawn monochrome template image,
+   auto-tinted for light/dark) and builds its menu.
 4. Wires `hotkey.onTrigger` to `typeClipboard()` and installs the global
    hotkey if enabled.
 
-The menu contains: **Type Clipboard** (shows the current lead time), a radio
-list of layouts (checkmark on the active one), **Preferences…**, and **Quit**.
-Selecting a layout writes `Settings.layoutID` and rebuilds the menu.
+The menu contains: **Type Clipboard** (shows the current lead time; its keyboard
+accelerator mirrors the configured hotkey via `HotkeyFormat`), a radio list of
+layouts (checkmark on the active one), **Preferences…**, and **Quit**. Selecting
+a layout writes `Settings.layoutID` and rebuilds the menu.
 
 ### Triggering a type
 
@@ -96,7 +107,8 @@ Both the menu item and the global hotkey call `typeClipboard()`:
 
 1. Read the clipboard; bail with an alert if empty.
 2. Verify `AccessibilityManager.isTrusted`; bail with an alert if not.
-3. Capture the active layout, then after `leadTime` seconds dispatch
+3. Play the cue sound (`PasteCueSound.shared.play()`) when enabled.
+4. Capture the active layout, then after `leadTime` seconds dispatch
    `engine.type(text, using: layout)` on a background queue.
 
 The **lead time** is the deliberate pause that lets the user click into the
@@ -116,13 +128,22 @@ survive relaunches; defaults are returned for keys that were never written.
 | `tipsy.unicodeFallback` | `true` | Type unmapped chars as Unicode |
 | `tipsy.leadTime` | `3` | Countdown before typing starts |
 | `tipsy.hotkeyEnabled` | `true` | Global hotkey active |
+| `tipsy.hotkeyKeyCode` | `9` (V) | Trigger hotkey virtual key code |
+| `tipsy.hotkeyModifiers` | ⌘⇧ | Trigger hotkey modifier flags (raw value) |
+| `tipsy.cueSoundEnabled` | `true` | Play the cue sound before typing |
+| `tipsy.cueVolume` | `0.7` | Cue volume (0–1) |
+| `tipsy.cueVariant` | `rising` | Cue motif (`rising` / `blip` / `chime`) |
+
+"Start at login" is **not** stored here — `LoginItem` uses `SMAppService`, whose
+registration state is the source of truth.
 
 `PreferencesWindowController` is a code-built (no nib) window with a layout
-popup, sliders for character delay (0–0.2s), jitter (0–0.1s), and lead time
-(0–10s), plus checkboxes for Unicode fallback and the global hotkey. Each
-control writes straight through to `Settings` and calls `onChange`, which makes
-`AppDelegate` re-apply settings, refresh the hotkey state, and rebuild the menu
-live.
+popup; sliders for character delay (0–0.2s), jitter (0–0.1s), lead time (0–10s),
+and cue volume (0–1); a cue-motif popup with a **Test sound** button; the hotkey
+recorder button; and checkboxes for Unicode fallback, cue sound, global hotkey,
+and start-at-login. Each control writes straight through to `Settings` (or the
+relevant system service) and calls `onChange`, which makes `AppDelegate` re-apply
+settings, refresh the hotkey state, and rebuild the menu live.
 
 ## Global hotkey
 
@@ -138,6 +159,20 @@ Global monitors require the Accessibility permission, which the app already
 holds for keystroke synthesis. Note the global monitor observes but does not
 *consume* the event — other apps still receive the combo (see
 [permissions-troubleshooting.md](permissions-troubleshooting.md)).
+
+## Cue sound, login item, and icon
+
+- **`PasteCueSound`** synthesizes the cue at runtime with `AVAudioEngine` — no
+  bundled audio file. `CueVariant` (`rising` / `blip` / `chime`) defines a short
+  note motif; `play()` reads the variant and volume from `Settings`, builds a
+  PCM buffer, and schedules it. `play(variant:volume:)` is used for live
+  previews from Preferences.
+- **`LoginItem`** wraps `SMAppService.mainApp` (macOS 13+) to register /
+  unregister start-at-login. It only affects the installed `.app`; running
+  unbundled (`swift run`) has no bundle to register and surfaces an error.
+- **`TipsyIcon`** draws the menu bar glyph (a clipboard with a caret) in code as
+  a template image. The distributable app icon is generated separately by
+  `Scripts/make-icons.swift` into `Resources/AppIcon.icns`.
 
 ## Concurrency notes
 
