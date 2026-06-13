@@ -16,7 +16,9 @@ BUNDLE_ID="de.rabbgmbh.tipsy"
 APP="/Applications/Tipsy.app"
 
 echo "==> Quitting Tipsy"
-pkill -f "Tipsy.app/Contents/MacOS/Tipsy" 2>/dev/null || true
+# Quit by the app first; fall back to an anchored match against the absolute
+# install path so we don't kill unrelated processes that merely reference it.
+osascript -e 'quit app "Tipsy"' 2>/dev/null || pkill -f '/Applications/Tipsy\.app/Contents/MacOS/Tipsy$' 2>/dev/null || true
 sleep 0.3
 
 if [ -d "$APP" ]; then
@@ -31,7 +33,9 @@ if [ "$PURGE" = "1" ]; then
   defaults delete "$BUNDLE_ID" 2>/dev/null || true
 
   echo "==> Removing local signing certificate 'Tipsy Local Signing'"
-  security delete-certificate -c "Tipsy Local Signing" 2>/dev/null || true
+  # delete-identity removes the certificate and its matching private key together;
+  # fall back to delete-certificate (cert only) if delete-identity is unsupported.
+  security delete-identity -c "Tipsy Local Signing" 2>/dev/null || security delete-certificate -c "Tipsy Local Signing" 2>/dev/null || true
 fi
 
 echo
