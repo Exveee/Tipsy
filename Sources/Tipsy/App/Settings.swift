@@ -22,6 +22,8 @@ enum Settings {
         static let hotkeyKeyCode = "tipsy.hotkeyKeyCode"
         static let hotkeyModifiers = "tipsy.hotkeyModifiers"
         static let cueSoundEnabled = "tipsy.cueSoundEnabled"
+        static let cueVolume = "tipsy.cueVolume"
+        static let cueVariant = "tipsy.cueVariant"
     }
 
     /// Default trigger combo: ⌘⇧V (virtual key code 9).
@@ -81,5 +83,17 @@ enum Settings {
     static var cueSoundEnabled: Bool {
         get { defaults.object(forKey: Key.cueSoundEnabled) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Key.cueSoundEnabled) }
+    }
+
+    /// Cue volume, 0–1. Defaults to `0.7`.
+    static var cueVolume: Double {
+        get { defaults.object(forKey: Key.cueVolume) as? Double ?? 0.7 }
+        set { defaults.set(newValue, forKey: Key.cueVolume) }
+    }
+
+    /// Selected cue motif (a ``CueVariant`` raw value). Defaults to `"rising"`.
+    static var cueVariant: String {
+        get { defaults.string(forKey: Key.cueVariant) ?? CueVariant.rising.rawValue }
+        set { defaults.set(newValue, forKey: Key.cueVariant) }
     }
 }

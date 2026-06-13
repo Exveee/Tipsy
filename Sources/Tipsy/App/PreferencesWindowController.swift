@@ -20,6 +20,10 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     private let hotkeyCheckbox = NSButton()
     private let hotkeyRecorderButton = NSButton()
     private let cueSoundCheckbox = NSButton()
+    private let cueVariantPopup = NSPopUpButton(frame: .zero, pullsDown: false)
+    private let cueVolumeSlider = NSSlider()
+    private let cueVolumeLabel = NSTextField(labelWithString: "")
+    private let cueTestButton = NSButton()
 
     /// Local key-down monitor installed only while recording a new combo.
     private var recordingMonitor: Any?
@@ -28,7 +32,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     convenience init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 360),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 470),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -114,6 +118,30 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         cueSoundCheckbox.action = #selector(cueSoundChanged)
         stack.addArrangedSubview(cueSoundCheckbox)
 
+        // Cue motif popup
+        for variant in CueVariant.allCases {
+            cueVariantPopup.addItem(withTitle: variant.displayName)
+            cueVariantPopup.lastItem?.representedObject = variant.rawValue
+        }
+        cueVariantPopup.target = self
+        cueVariantPopup.action = #selector(cueVariantChanged)
+        stack.addArrangedSubview(labeledRow("Cue sound:", cueVariantPopup))
+
+        // Cue volume slider (0–1)
+        cueVolumeSlider.minValue = 0
+        cueVolumeSlider.maxValue = 1
+        cueVolumeSlider.target = self
+        cueVolumeSlider.action = #selector(cueVolumeChanged)
+        cueVolumeSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        stack.addArrangedSubview(labeledRow("Cue volume:", cueVolumeSlider, valueLabel: cueVolumeLabel))
+
+        // Cue test button
+        cueTestButton.bezelStyle = .rounded
+        cueTestButton.title = "Test sound"
+        cueTestButton.target = self
+        cueTestButton.action = #selector(cueTestClicked)
+        stack.addArrangedSubview(labeledRow("", cueTestButton))
+
         // Hotkey recorder
         hotkeyRecorderButton.bezelStyle = .rounded
         hotkeyRecorderButton.setButtonType(.momentaryPushIn)
@@ -160,6 +188,11 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         leadTimeSlider.doubleValue = Settings.leadTime
         unicodeFallbackCheckbox.state = Settings.unicodeFallback ? .on : .off
         cueSoundCheckbox.state = Settings.cueSoundEnabled ? .on : .off
+        let variantIndex = CueVariant.allCases.firstIndex {
+            $0.rawValue == Settings.cueVariant
+        } ?? 0
+        cueVariantPopup.selectItem(at: variantIndex)
+        cueVolumeSlider.doubleValue = Settings.cueVolume
         hotkeyCheckbox.state = Settings.hotkeyEnabled ? .on : .off
         hotkeyRecorderButton.title = currentHotkeyTitle()
 
@@ -178,6 +211,7 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         characterDelayLabel.stringValue = String(format: "%.3fs", Settings.characterDelay)
         jitterLabel.stringValue = String(format: "%.3fs", Settings.jitter)
         leadTimeLabel.stringValue = String(format: "%.1fs", Settings.leadTime)
+        cueVolumeLabel.stringValue = "\(Int(Settings.cueVolume * 100))%"
     }
 
     // MARK: - Actions
@@ -216,6 +250,28 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         Settings.cueSoundEnabled = cueSoundCheckbox.state == .on
         if Settings.cueSoundEnabled { PasteCueSound.shared.play() }  // preview
         onChange?()
+    }
+
+    @objc private func cueVariantChanged() {
+        if let raw = cueVariantPopup.selectedItem?.representedObject as? String {
+            Settings.cueVariant = raw
+        }
+        PasteCueSound.shared.play()  // preview the chosen motif
+        onChange?()
+    }
+
+    @objc private func cueVolumeChanged() {
+        Settings.cueVolume = cueVolumeSlider.doubleValue
+        updateValueLabels()
+        // No auto-preview while dragging; use "Test sound".
+        onChange?()
+    }
+
+    @objc private func cueTestClicked() {
+        PasteCueSound.shared.play(
+            variant: CueVariant(rawValue: Settings.cueVariant) ?? .rising,
+            volume: Settings.cueVolume
+        )
     }
 
     @objc private func hotkeyChanged() {

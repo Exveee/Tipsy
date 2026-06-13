@@ -92,6 +92,9 @@ Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist
   rebind the global trigger (default ⌘⇧V).
 - **Play cue sound before typing** (default on) — a short distinctive tone when
   typing is triggered.
+- **Cue sound** — pick the motif (Rising / Blip / Chime); selecting one previews it.
+- **Cue volume** (0–100%, default 70%) — loudness of the cue. **Test sound**
+  plays it at the current settings.
 - **Enable global hotkey** (default on) — toggles the global trigger.
 
 ## Typical KVM / console workflow
