@@ -52,6 +52,16 @@ final class HotkeyManager {
         }
     }
 
+    /// Re-installs the monitors if currently enabled. Needed because a global
+    /// monitor added while the process was untrusted never starts firing once
+    /// Accessibility is granted later — only a freshly added monitor observes
+    /// events. Call after trust is acquired. No-op if disabled.
+    func reload() {
+        guard isEnabled else { return }
+        disable()
+        enable()
+    }
+
     /// Removes the monitors. No-op if already disabled.
     func disable() {
         if let globalMonitor {

@@ -46,6 +46,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         hotkey.onTrigger = { [weak self] in self?.typeClipboard() }
         applyHotkeyState()
+
+        // Re-arm the global hotkey once Accessibility is granted: a global
+        // monitor installed while untrusted never fires until re-installed.
+        DistributedNotificationCenter.default().addObserver(
+            self,
+            selector: #selector(accessibilityTrustChanged),
+            name: NSNotification.Name("com.apple.accessibility.api"),
+            object: nil
+        )
+
+        // The global hotkey is dead without Accessibility, and the deferred
+        // prompt (#25) only fires from a menu-driven type. A user who only
+        // presses the hotkey would get no feedback at all, so prompt at launch
+        // when the hotkey is on but we are not yet trusted.
+        if Settings.hotkeyEnabled, !AccessibilityManager.isTrusted {
+            AccessibilityManager.ensureTrusted(prompt: true)
+        }
+    }
+
+    /// Fired (off the main thread) when the Accessibility trust list changes.
+    /// Re-arms the hotkey monitors so the global combo starts working without
+    /// requiring an app relaunch.
+    @objc private func accessibilityTrustChanged() {
+        Task { @MainActor [weak self] in
+            guard let self, AccessibilityManager.isTrusted else { return }
+            self.hotkey.reload()
+        }
     }
 
     /// Loads persisted settings into the lead time and active layout. The
