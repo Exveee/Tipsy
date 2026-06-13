@@ -97,6 +97,7 @@ Tipsy/
 └── Scripts/
     ├── bundle.sh                 # Build → assemble Tipsy.app (no Xcode needed)
     ├── make-icons.swift          # Render the app icon .iconset
+    ├── make-signing-cert.sh      # Self-signed cert for stable permissions
     ├── check.sh                  # Local CI: swift build + run TipsyCheck
     └── release.sh                # Local signed/notarized release flow
 ```
@@ -150,12 +151,34 @@ build.
 ### Other commands
 
 ```bash
-swift build              # compile only (debug)
-swift run Tipsy          # build + run without bundling (no Dock icon)
-./Scripts/check.sh       # local CI: swift build + run the TipsyCheck test suite
-swift run TipsyCheck     # run the test suite on its own
-./Scripts/release.sh     # signed + notarized build (needs signing env vars)
+swift build                  # compile only (debug)
+swift run Tipsy              # build + run without bundling (no Dock icon)
+./Scripts/check.sh           # local CI: swift build + run the TipsyCheck test suite
+swift run TipsyCheck         # run the test suite on its own
+./Scripts/make-signing-cert.sh  # one-time: stable signature (see below)
+./Scripts/release.sh         # signed + notarized build (needs signing env vars)
 ```
+
+### Stable permissions across rebuilds
+
+macOS keys the Accessibility (TCC) grant to the app's code-signing **designated
+requirement**. An ad-hoc signature changes every build, so you'd re-grant each
+time. Run once:
+
+```bash
+./Scripts/make-signing-cert.sh   # creates a self-signed "Tipsy Local Signing" cert
+./Scripts/bundle.sh release      # auto-detects and signs with it
+```
+
+`bundle.sh` then signs with that identity automatically; the designated
+requirement (`identifier "de.rabbgmbh.tipsy" and certificate leaf = …`) stays
+constant, so the Accessibility grant **persists across rebuilds**. Grant it once
+after switching (the signature changes from ad-hoc), then it sticks.
+
+This is *not* a Developer ID cert — that needs a paid Apple Developer account
+and is only required to distribute/notarize the app for other Macs. For that,
+pass `SIGN_IDENTITY="Developer ID Application: … (TEAMID)"` to `bundle.sh` /
+`release.sh`.
 
 ### First run
 
@@ -168,12 +191,12 @@ swift run TipsyCheck     # run the test suite on its own
 3. Copy some text, then menu bar icon → **Type Clipboard**, or press the global
    hotkey **⌘⇧V**.
 
-> **Re-granting after a rebuild:** the build is *ad-hoc signed*, so macOS keys
-> the Accessibility grant to that exact binary. After running `bundle.sh` again
-> you may need to remove and re-add Tipsy in the Accessibility list (the `−`
-> then `+` buttons), or toggle it off and on. A real Developer ID signature
-> (`./Scripts/release.sh` with signing env vars) makes the grant stable across
-> rebuilds.
+> **Re-granting after a rebuild:** with the default *ad-hoc* signature, macOS
+> keys the grant to that exact binary, so after `bundle.sh` you may need to
+> remove and re-add Tipsy in the Accessibility list (the `−` then `+` buttons).
+> Run `./Scripts/make-signing-cert.sh` once (see
+> [Stable permissions](#stable-permissions-across-rebuilds)) to make the grant
+> persist across rebuilds.
 
 ---
 

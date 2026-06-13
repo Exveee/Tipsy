@@ -31,19 +31,36 @@ type. If you see that alert, the permission is the problem.
 ### Re-adding the app after a rebuild
 
 macOS's permission database (TCC) keys the Accessibility grant to the app's
-**code signature**, not just its path. Tipsy's `Scripts/bundle.sh` **ad-hoc
-signs** the bundle by default (`codesign --sign -`). An ad-hoc signature is not
-a stable identity, so after rebuilding the `.app` macOS may treat it as a
-different program and the existing grant won't apply. If typing stops working
-after a rebuild:
+**code-signing designated requirement**, not just its path. With an *ad-hoc*
+signature (`codesign --sign -`, the fallback default) the identity changes every
+build, so after rebuilding the `.app` macOS treats it as a different program and
+the existing grant won't apply.
+
+**Fix — stable signature (recommended):** run once
+
+```bash
+./Scripts/make-signing-cert.sh   # self-signed "Tipsy Local Signing" cert
+./Scripts/bundle.sh release      # auto-detects and signs with it
+```
+
+`bundle.sh` then signs every build with that identity, so the designated
+requirement (`identifier "de.rabbgmbh.tipsy" and certificate leaf = …`) stays
+constant and the grant **persists across rebuilds**. You grant Accessibility one
+more time right after switching (the signature changes from ad-hoc), then it
+sticks. Verify the identity exists with
+`security find-identity -p codesigning` (it shows as `CSSMERR_TP_NOT_TRUSTED` —
+that's fine; self-signed certs are untrusted for *distribution* but fully usable
+for signing and for a stable TCC identity).
+
+**If you're still on ad-hoc** and typing stops after a rebuild:
 
 1. Open **System Settings → Privacy & Security → Accessibility**.
 2. Remove the old **Tipsy** entry (select it, click **−**).
 3. Add the freshly built `dist/Tipsy.app` again (click **+**), and enable it.
 
-A real **Developer ID Application** signature (set `SIGN_IDENTITY` when running
-`bundle.sh`) gives a stable identity, so distributable builds keep their grant
-across updates. Ad-hoc dev builds are the case that needs re-adding.
+A paid **Developer ID Application** signature (pass `SIGN_IDENTITY` to
+`bundle.sh`) additionally lets the app run on *other* Macs without Gatekeeper
+warnings; it isn't needed for stable permissions on your own machine.
 
 ## Hotkey conflicts
 
