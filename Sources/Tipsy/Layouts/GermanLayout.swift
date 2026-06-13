@@ -3,9 +3,10 @@ import CoreGraphics
 /// German (QWERTZ), Apple layout.
 ///
 /// Groundwork coverage: letters (with Y/Z swap), umlauts, ß, digits and their
-/// shifted symbols, comma/period, whitespace. AltGr (Option) symbols such as
-/// `@ € { } [ ] \ | ~` are partially mapped.
-/// TODO: complete AltGr table and dead-key accents (^ ´ `).
+/// shifted symbols, comma/period, whitespace. AltGr (Option) symbols now mapped:
+/// `@ € { } [ ] | \`. `~` is a dead key and is intentionally left unmapped
+/// until multi-stroke support exists.
+/// TODO: dead-key accents (^ ´ ` ~) need multi-stroke support.
 struct GermanLayout: KeyboardLayout {
     let id = "de"
     let displayName = "German (QWERTZ)"
@@ -55,9 +56,16 @@ struct GermanLayout: KeyboardLayout {
         t["+"] = KeyStroke(keyCode: VK.rightBracket)
         t["*"] = KeyStroke(keyCode: VK.rightBracket, shift: true)
 
-        // Common AltGr (Option) symbols.
+        // Common AltGr (Option) symbols on the Apple German layer.
         t["@"] = KeyStroke(keyCode: VK.l, option: true)
         t["€"] = KeyStroke(keyCode: VK.e, option: true)
+        t["{"] = KeyStroke(keyCode: VK.n8, option: true)
+        t["["] = KeyStroke(keyCode: VK.n5, option: true)
+        t["]"] = KeyStroke(keyCode: VK.n6, option: true)
+        t["}"] = KeyStroke(keyCode: VK.n9, option: true)
+        t["|"] = KeyStroke(keyCode: VK.n7, option: true)
+        t["\\"] = KeyStroke(keyCode: VK.n7, shift: true, option: true)
+        // TODO: ~ is a dead key (Option+n + space); needs multi-stroke support
 
         // Whitespace.
         t[" "] = KeyStroke(keyCode: VK.space)

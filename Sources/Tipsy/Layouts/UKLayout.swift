@@ -3,8 +3,9 @@ import CoreGraphics
 /// UK English (QWERTY), Apple layout.
 ///
 /// Groundwork coverage: starts from the US ANSI table and applies the British
-/// differences (`@`/`"` swap, `£` on Shift+3, `#`/`~` key).
-/// TODO: verify Option-layer symbols against BS 4822.
+/// differences (`@`/`"` swap, `£` on Shift+3, `#`/`~` key, `€` on Option+2).
+/// TODO: verify the grave-key `¬` / `|` arrangement against BS 4822 before
+/// mapping; remaining Option-layer symbols still to be confirmed.
 struct UKLayout: KeyboardLayout {
     let id = "uk"
     let displayName = "UK (QWERTY)"
@@ -22,6 +23,11 @@ struct UKLayout: KeyboardLayout {
         // Dedicated #/~ key (ANSI backslash position on Apple UK).
         o["#"] = KeyStroke(keyCode: VK.backslash)
         o["~"] = KeyStroke(keyCode: VK.backslash, shift: true)
+        // Euro sign on the Apple British Option layer.
+        o["€"] = KeyStroke(keyCode: VK.n2, option: true)
+        // TODO: ¬ and | live on the grave (`) key on Apple British, but the
+        // exact ANSI/ISO arrangement is uncertain — verify against BS 4822
+        // before mapping to avoid introducing wrong strokes.
         overrides = o
     }
 
