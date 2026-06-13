@@ -22,6 +22,16 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Tipsy"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
+# App icon. Regenerate the .icns from the generator if iconutil is available,
+# then copy it into the bundle (referenced by Info.plist's CFBundleIconFile).
+if command -v iconutil >/dev/null 2>&1; then
+  ( cd "$ROOT" && swift Scripts/make-icons.swift >/dev/null )
+  iconutil -c icns "$ROOT/dist/AppIcon.iconset" -o "$ROOT/Resources/AppIcon.icns"
+fi
+if [ -f "$ROOT/Resources/AppIcon.icns" ]; then
+  cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 # Code signing.
 #
 # SIGN_IDENTITY selects the codesign identity:

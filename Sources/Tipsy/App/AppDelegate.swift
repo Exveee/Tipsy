@@ -56,7 +56,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "⌨︎"
+        statusItem.button?.image = TipsyIcon.statusItemImage()
+        statusItem.button?.toolTip = "Tipsy — type clipboard"
         rebuildMenu()
     }
 
