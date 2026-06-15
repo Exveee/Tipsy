@@ -19,7 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// Single serial queue for the blocking typing run, so overlapping triggers
     /// can never interleave keystrokes (#12).
-    private let typingQueue = DispatchQueue(label: "rabbgmbh.tipsy.typing")
+    private let typingQueue = DispatchQueue(label: "com.exveee.tipsy.typing")
 
     /// Main-actor guard: a new trigger is ignored while a run is scheduled or
     /// active (#12). Also drives whether "Stop Typing" is enabled.

@@ -44,7 +44,7 @@ the existing grant won't apply.
 ```
 
 `bundle.sh` then signs every build with that identity, so the designated
-requirement (`identifier "de.rabbgmbh.tipsy" and certificate leaf = …`) stays
+requirement (`identifier "com.exveee.tipsy" and certificate leaf = …`) stays
 constant and the grant **persists across rebuilds**. You grant Accessibility one
 more time right after switching (the signature changes from ad-hoc), then it
 sticks. Verify the identity exists with

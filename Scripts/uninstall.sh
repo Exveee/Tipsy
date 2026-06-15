@@ -12,7 +12,7 @@ set -euo pipefail
 PURGE=0
 [ "${1:-}" = "--purge" ] && PURGE=1
 
-BUNDLE_ID="de.rabbgmbh.tipsy"
+BUNDLE_ID="com.exveee.tipsy"
 APP="/Applications/Tipsy.app"
 
 echo "==> Quitting Tipsy"

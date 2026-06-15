@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>Tipsy</string>
     <key>CFBundleIdentifier</key>
-    <string>de.rabbgmbh.tipsy</string>
+    <string>com.exveee.tipsy</string>
     <key>CFBundleExecutable</key>
     <string>Tipsy</string>
     <key>CFBundleIconFile</key>
