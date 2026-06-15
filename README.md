@@ -208,4 +208,4 @@ Tipsy/
 
 ## License
 
-TBD.
+[MIT](LICENSE) © 2026 Paul Dambmann
