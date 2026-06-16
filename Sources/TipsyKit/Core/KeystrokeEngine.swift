@@ -126,6 +126,14 @@ public final class KeystrokeEngine: Sendable {
     }
 
     private func post(_ stroke: KeyStroke, source: CGEventSource?) {
+        // Press the required modifiers as real key-down events first. Local apps
+        // honor the per-event CGEventFlags below, but remote consoles
+        // (VNC/KVM/web terminals like Teleport) track the physical modifier key
+        // state and ignore event flags — without an actual Shift/Option press
+        // they receive the unshifted key, so e.g. `"` (Shift+2) arrives as `2`.
+        if stroke.shift { postModifier(VK.shift, keyDown: true, flags: stroke.flags, source: source) }
+        if stroke.option { postModifier(VK.option, keyDown: true, flags: stroke.flags, source: source) }
+
         let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: false)
         // Set flags explicitly so unmodified strokes post with no modifiers.
@@ -133,6 +141,18 @@ public final class KeystrokeEngine: Sendable {
         up?.flags = stroke.flags
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
+
+        // Release modifiers in reverse order, clearing their flag as we go so the
+        // key-up events report the correct remaining modifier state.
+        if stroke.option { postModifier(VK.option, keyDown: false, flags: stroke.shift ? .maskShift : [], source: source) }
+        if stroke.shift { postModifier(VK.shift, keyDown: false, flags: [], source: source) }
+    }
+
+    /// Posts a single modifier key-down or key-up event with the given flags.
+    private func postModifier(_ keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags, source: CGEventSource?) {
+        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
+        event?.flags = flags
+        event?.post(tap: .cghidEventTap)
     }
 
     /// Posts `character` directly via its UTF-16 code units using a virtual-key-0

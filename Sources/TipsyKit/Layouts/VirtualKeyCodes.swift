@@ -34,6 +34,11 @@ public enum VK {
     public static let `return`: CGKeyCode = 36, tab: CGKeyCode = 48
     public static let space: CGKeyCode = 49
 
+    // Modifier keys. Posted as explicit key-down/up events so remote consoles
+    // (VNC/KVM/web terminals) that track real Shift/Option key state — and
+    // ignore per-event CGEventFlags — still see the modifier held.
+    public static let shift: CGKeyCode = 56, option: CGKeyCode = 58
+
     /// US-position letter map, shared by layouts that keep QWERTY letters.
     public static let ansiLetters: [Character: CGKeyCode] = [
         "a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": h,
