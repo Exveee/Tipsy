@@ -15,7 +15,7 @@ public struct GermanLayout: KeyboardLayout {
     /// Dead-key characters emitted as the literal symbol by pressing the dead
     /// accent key followed by SPACE on the Apple German layout.
     private let deadKeys: [Character: [KeyStroke]] = [
-        "^": [KeyStroke(keyCode: VK.grave), KeyStroke(keyCode: VK.space)],
+        "^": [KeyStroke(keyCode: VK.section), KeyStroke(keyCode: VK.space)],
         "´": [KeyStroke(keyCode: VK.equal), KeyStroke(keyCode: VK.space)],
         "`": [KeyStroke(keyCode: VK.equal, shift: true), KeyStroke(keyCode: VK.space)],
         "~": [KeyStroke(keyCode: VK.n, option: true), KeyStroke(keyCode: VK.space)]
@@ -73,7 +73,7 @@ public struct GermanLayout: KeyboardLayout {
         t["}"] = KeyStroke(keyCode: VK.n9, option: true)
         t["|"] = KeyStroke(keyCode: VK.n7, option: true)
         t["\\"] = KeyStroke(keyCode: VK.n7, shift: true, option: true)
-        t["°"] = KeyStroke(keyCode: VK.grave, shift: true)
+        t["°"] = KeyStroke(keyCode: VK.section, shift: true)
 
         // Whitespace.
         t[" "] = KeyStroke(keyCode: VK.space)

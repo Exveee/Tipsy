@@ -30,6 +30,11 @@ public enum VK {
     public static let slash: CGKeyCode = 44, period: CGKeyCode = 47
     public static let grave: CGKeyCode = 50
 
+    /// ISO-only extra key (`kVK_ISO_Section`). On Apple ISO keyboards this is the
+    /// physical key left of `1` — the German `^`/`°` key. (Keycode 50 / `grave`
+    /// is the `<>|` key on ISO, NOT the `^` key.)
+    public static let section: CGKeyCode = 10
+
     // Whitespace / control.
     public static let `return`: CGKeyCode = 36, tab: CGKeyCode = 48
     public static let space: CGKeyCode = 49

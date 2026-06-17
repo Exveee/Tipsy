@@ -105,8 +105,11 @@ expectNil(USLayout().keyStroke(for: "本"))
 
 expectEqual(de.strokes(for: "~"),
             [KeyStroke(keyCode: VK.n, option: true), KeyStroke(keyCode: VK.space)])
+// `^` dead key sits on the ISO section key (10), not grave (50 = `<>|` on ISO).
 expectEqual(de.strokes(for: "^"),
-            [KeyStroke(keyCode: VK.grave), KeyStroke(keyCode: VK.space)])
+            [KeyStroke(keyCode: VK.section), KeyStroke(keyCode: VK.space)])
+// `°` = Shift on the same ISO section key.
+expectEqual(de.keyStroke(for: "°"), KeyStroke(keyCode: VK.section, shift: true))
 // Default single-stroke path still works through strokes(for:).
 expectEqual(de.strokes(for: "a"), [KeyStroke(keyCode: VK.a)])
 
