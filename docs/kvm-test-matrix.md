@@ -60,7 +60,18 @@ For each result, add the tester's initials and the date (e.g., `✓ PD 2025-02-1
 | **Browser key-event echo** | – | – | n/a | n/a |
 | **Guacamole/Teleport web KVM** | – | – | – | – |
 | **PiKVM or IPMI console** | – | – | ✓ PD 2026-07-20 | – |
-| **VNC client (TigerVNC, RealVNC)** | – | – | – | – |
+| **VNC client (TigerVNC, RealVNC)** | – | – | ✓ PD 2026-07-20 ¹ | – ² |
+
+¹ Proxmox noVNC web console, Debian 13 host with PC-German layout — full
+canary correct.
+
+² Not yet testable: the only available remote host uses a German layout, so
+the US (PC/Remote) column has no valid target. A cross-check against that
+German host on 2026-07-20 confirmed the *expected* mismatch behavior — Y/Z
+transposed, symbols remapped per the German layout — and the skipped-character
+report correctly listed the 10 characters absent from the US layout
+(`äöüÄÖÜß€°§`) instead of typing garbage. Needs a US-layout host
+(`loadkeys us`) for a real ✓.
 
 ### Legend
 
