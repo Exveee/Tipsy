@@ -68,7 +68,15 @@ public final class KeystrokeEngine: Sendable {
     /// background serial queue.
     private let cancelled = OSAllocatedUnfairLock(initialState: false)
 
-    public init() {}
+    /// Blocking sleep primitive, called for every intra-stroke and
+    /// inter-character pause. Injected so tests can record pauses instead of
+    /// actually sleeping; captured as an immutable `@Sendable` `let` so the
+    /// engine stays `Sendable` and safe to run from a background queue.
+    private let sleeper: @Sendable (TimeInterval) -> Void
+
+    public init(sleeper: @escaping @Sendable (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }) {
+        self.sleeper = sleeper
+    }
 
     /// Requests that an in-flight run stop at the next character boundary.
     /// Safe to call from any thread.
@@ -139,6 +147,39 @@ public final class KeystrokeEngine: Sendable {
         return plan
     }
 
+    /// One step of a character's execution plan: a synthesized event or a pause.
+    public enum PostStep: Equatable {
+        case event(KeyEvent)
+        case pause(TimeInterval)
+    }
+
+    /// Pure, ordered plan for a whole character's stroke sequence: every key
+    /// event (modifier presses, key down, key up, modifier releases, and each
+    /// dead-key step) with an `interEventDelay` pause interleaved *between*
+    /// consecutive events.
+    ///
+    /// With `interEventDelay == 0` no `.pause` steps are emitted at all, so the
+    /// event stream — and its timing — is byte-identical to posting back-to-back.
+    /// The engine executes this list; tests assert on it directly.
+    public static func postPlan(for strokes: [KeyStroke], interEventDelay: TimeInterval) -> [PostStep] {
+        // Flatten every stroke into its ordered key events.
+        var events: [KeyEvent] = []
+        for stroke in strokes {
+            let plan = modifierPlan(for: stroke)
+            for event in plan where event.keyDown { events.append(event) }
+            events.append(KeyEvent(keyCode: stroke.keyCode, keyDown: true, flags: stroke.flags))
+            events.append(KeyEvent(keyCode: stroke.keyCode, keyDown: false, flags: stroke.flags))
+            for event in plan where !event.keyDown { events.append(event) }
+        }
+        // Interleave a pause before every event except the first.
+        var steps: [PostStep] = []
+        for (index, event) in events.enumerated() {
+            if index > 0, interEventDelay > 0 { steps.append(.pause(interEventDelay)) }
+            steps.append(.event(event))
+        }
+        return steps
+    }
+
     /// Types `text` using `layout` with the timing/fallback rules in `config`.
     /// Returns the characters that could not be typed, so the caller can warn
     /// the user. Stops early (returning what was skipped so far) if ``cancel()``
@@ -159,9 +200,7 @@ public final class KeystrokeEngine: Sendable {
             if isCancelled { break }
 
             if let strokes = layout.strokes(for: character) {
-                for stroke in strokes {
-                    post(stroke, source: source)
-                }
+                post(strokes, source: source, config: config)
             } else if config.unicodeFallback {
                 if !postUnicode(character, source: source) {
                     skipped.append(character)
@@ -183,22 +222,18 @@ public final class KeystrokeEngine: Sendable {
             delay = max(0, config.characterDelay + Double.random(in: -config.jitter...config.jitter))
         }
         if delay > 0 {
-            Thread.sleep(forTimeInterval: delay)
+            sleeper(delay)
         }
     }
 
-    private func post(_ stroke: KeyStroke, source: CGEventSource?) {
-        // Press the required real modifier keys first (see ``modifierPlan``),
-        // then the key itself, then release the modifiers in reverse.
-        let plan = Self.modifierPlan(for: stroke)
-        for event in plan where event.keyDown {
-            postEvent(event, source: source)
-        }
-        // Set flags explicitly so unmodified strokes post with no modifiers.
-        postEvent(KeyEvent(keyCode: stroke.keyCode, keyDown: true, flags: stroke.flags), source: source)
-        postEvent(KeyEvent(keyCode: stroke.keyCode, keyDown: false, flags: stroke.flags), source: source)
-        for event in plan where !event.keyDown {
-            postEvent(event, source: source)
+    /// Posts every event for `strokes`, pausing `config.interEventDelay` between
+    /// consecutive events (see ``postPlan(for:interEventDelay:)``).
+    private func post(_ strokes: [KeyStroke], source: CGEventSource?, config: TypingConfig) {
+        for step in Self.postPlan(for: strokes, interEventDelay: config.interEventDelay) {
+            switch step {
+            case .event(let event): postEvent(event, source: source)
+            case .pause(let delay): sleeper(delay)
+            }
         }
     }
 

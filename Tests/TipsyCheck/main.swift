@@ -161,6 +161,52 @@ expectEqual(shiftOptPlan, [
 // An unmodified stroke needs no modifier events at all.
 expectEqual(KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.a)), [])
 
+// MARK: - Intra-stroke pacing (#29 interEventDelay)
+
+func countEvents(_ steps: [KeystrokeEngine.PostStep]) -> Int {
+    steps.filter { if case .event = $0 { return true } else { return false } }.count
+}
+func countPauses(_ steps: [KeystrokeEngine.PostStep]) -> Int {
+    steps.filter { if case .pause = $0 { return true } else { return false } }.count
+}
+func isEventStep(_ step: KeystrokeEngine.PostStep?) -> Bool {
+    if case .event = step { return true } else { return false }
+}
+
+// A shifted stroke posts 4 events (Shift down, key down, key up, Shift up); with
+// a delay set, 3 pauses sit strictly between them.
+let pacedShift = KeystrokeEngine.postPlan(for: [KeyStroke(keyCode: VK.n1, shift: true)],
+                                          interEventDelay: 0.005)
+expectEqual(countEvents(pacedShift), 4)
+expectEqual(countPauses(pacedShift), 3)
+expectEqual(isEventStep(pacedShift.first), true, "plan must not start with a pause")
+expectEqual(isEventStep(pacedShift.last), true, "plan must not end with a pause")
+expectEqual(pacedShift == [
+    .event(.init(keyCode: VK.shift, keyDown: true, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.n1, keyDown: true, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.n1, keyDown: false, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.shift, keyDown: false, flags: [])),
+], true)
+
+// interEventDelay 0 → no pauses at all: byte-identical event stream.
+let unpacedShift = KeystrokeEngine.postPlan(for: [KeyStroke(keyCode: VK.n1, shift: true)],
+                                            interEventDelay: 0)
+expectEqual(countEvents(unpacedShift), 4)
+expectEqual(countPauses(unpacedShift), 0)
+expectEqual(unpacedShift.count, 4)
+
+// A dead-key sequence (German `~` = ⌥n then space) is one plan spanning both
+// strokes: 4 + 2 = 6 events, 5 pauses, including one between the two strokes.
+let deadKeyStrokes = de.strokes(for: "~")!
+let pacedDeadKey = KeystrokeEngine.postPlan(for: deadKeyStrokes, interEventDelay: 0.005)
+expectEqual(countEvents(pacedDeadKey), 6)
+expectEqual(countPauses(pacedDeadKey), 5)
+expectEqual(isEventStep(pacedDeadKey.first), true)
+expectEqual(isEventStep(pacedDeadKey.last), true)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
