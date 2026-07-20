@@ -260,6 +260,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
 
         let layout = activeLayout
+        // TIS is main-thread-only: build the dynamic layout's reverse map here
+        // on the main actor, not lazily on the background typing queue.
+        (layout as? DynamicLocalLayout)?.prepare()
 
         // #35: warn (once, unless suppressed) when the macOS input source that
         // would interpret local keystrokes doesn't match the selected layout.

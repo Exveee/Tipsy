@@ -101,16 +101,41 @@ public final class DynamicLocalLayout: KeyboardLayout {
         }
     }
 
+    /// Builds the map now, on the calling thread. MUST run on the main thread:
+    /// the Text Input Sources API (`TISCopyCurrentKeyboardInputSource` and
+    /// friends) asserts the main dispatch queue and traps otherwise. Call this
+    /// from the main actor before handing the layout to a background typing
+    /// run, so lookups never need to build.
+    public func prepare() {
+        ensureBuilt()
+    }
+
     /// Builds the map on first use. Holding the lock during the build serializes
     /// concurrent first lookups; the build is a few hundred `UCKeyTranslate`
     /// calls, so it stays cheap.
+    ///
+    /// TIS is main-thread-only, so when the first (or first-after-invalidate)
+    /// lookup arrives on the background typing queue the build hops to the main
+    /// queue synchronously. That is safe here because the typing run never
+    /// blocks the main thread — the app awaits it via a continuation — but the
+    /// intended fast path is ``prepare()`` from the main actor at trigger time.
     private func ensureBuilt() {
-        lock.withLock { cache in
-            guard !cache.built else { return }
+        let needsBuild = lock.withLock { !$0.built }
+        guard needsBuild else { return }
+
+        let build = { [self] in
             let (single, multi) = Self.buildMap()
-            cache.single = single
-            cache.multi = multi
-            cache.built = true
+            lock.withLock { cache in
+                guard !cache.built else { return }
+                cache.single = single
+                cache.multi = multi
+                cache.built = true
+            }
+        }
+        if Thread.isMainThread {
+            build()
+        } else {
+            DispatchQueue.main.sync(execute: build)
         }
     }
 
