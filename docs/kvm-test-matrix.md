@@ -56,7 +56,7 @@ For each result, add the tester's initials and the date (e.g., `✓ PD 2025-02-1
 
 | Target | Local Mac<br/>German | Local Mac<br/>US/Dynamic | Remote/KVM<br/>German PC | Remote/KVM<br/>US PC |
 |--------|:---:|:---:|:---:|:---:|
-| **TextEdit (local)** | – | – | n/a | n/a |
+| **TextEdit (local)** | – | ✓ PD 2026-07-20 ³ | n/a | n/a |
 | **Browser key-event echo** | – | – | n/a | n/a |
 | **Guacamole/Teleport web KVM** | – | – | – | – |
 | **PiKVM or IPMI console** | – | – | ✓ PD 2026-07-20 | – |
@@ -72,6 +72,9 @@ transposed, symbols remapped per the German layout — and the skipped-character
 report correctly listed the 10 characters absent from the US layout
 (`äöüÄÖÜß€°§`) instead of typing garbage. Needs a US-layout host
 (`loadkeys us`) for a real ✓.
+
+³ Dynamic layout with a German macOS input source. Retest after the
+main-thread fix for the TIS crash (#38) — full canary correct.
 
 ### Legend
 
