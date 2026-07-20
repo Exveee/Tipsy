@@ -560,6 +560,36 @@ expectEqual(InputSourceMatch.expectedPrefixes(for: "de-pc"), ["com.apple.keylayo
 // Swiss German prefix.
 expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.SwissGerman", layoutID: "ch-de"), true)
 
+// MARK: - Canary string (#36)
+
+// The canonical QA payload from docs/kvm-test-matrix.md. Every character in it
+// must resolve on the German PC layout, so a regression in any mapped special
+// character fails here before it reaches a real KVM test.
+let canary = """
+0123456789
+abcdefghijklmnopqrstuvwxyz
+ABCDEFGHIJKLMNOPQRSTUVWXYZ
+ä ö ü Ä Ö Ü ß
+@ € { } [ ] | \\ ~ ^ ° § " ' < > - _ + * # ; :
+"""
+for character in canary {
+    if dePC.strokes(for: character) == nil {
+        expectEqual("unmapped: \(character)", "mapped", "canary char must resolve on GermanPCLayout")
+    }
+}
+expectEqual(canary.allSatisfy { dePC.strokes(for: $0) != nil }, true, "full canary resolves on de-pc")
+
+// The ASCII subset of the canary must resolve on the US PC layout.
+let asciiCanary = canary.filter { $0.isASCII }
+expectEqual(asciiCanary.allSatisfy { usPC.strokes(for: $0) != nil }, true, "ASCII canary resolves on us-pc")
+
+// Typographic input normalized for a remote console becomes fully typeable on
+// the German PC layout — the chain that prevents stray characters on a KVM.
+let typographic = "\u{201E}Hi\u{201C} \u{2018}x\u{2019} 2013\u{2013}2024\u{00A0}km\r\nEnde\u{2026}"
+let normalizedCanary = TextNormalization.normalize(typographic, options: .remoteConsole)
+expectEqual(normalizedCanary.allSatisfy { dePC.strokes(for: $0) != nil }, true, "normalized typographic text resolves on de-pc")
+expectEqual(normalizedCanary, "\"Hi\" 'x' 2013-2024 km\nEnde...")
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
