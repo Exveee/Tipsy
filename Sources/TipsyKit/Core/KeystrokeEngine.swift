@@ -86,6 +86,59 @@ public final class KeystrokeEngine: Sendable {
         cancelled.withLock { $0 }
     }
 
+    /// One synthesized keyboard event: which virtual key, whether it is a press
+    /// or a release, and the modifier flags the event should carry. Both the
+    /// engine and the tests build event sequences out of these so the posting
+    /// order can be verified without Quartz.
+    public struct KeyEvent: Equatable {
+        public let keyCode: CGKeyCode
+        public let keyDown: Bool
+        public let flags: CGEventFlags
+
+        public init(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags) {
+            self.keyCode = keyCode
+            self.keyDown = keyDown
+            self.flags = flags
+        }
+    }
+
+    /// Pure plan of the real modifier key events a stroke needs, in posting
+    /// order: presses (Shift → Option → right Option) followed by releases in
+    /// reverse.
+    ///
+    /// Local apps honor the per-event `CGEventFlags`, but remote consoles
+    /// (VNC/KVM/web terminals like Teleport) track the *physical* modifier key
+    /// state and ignore event flags — without an actual Shift/Option press they
+    /// receive the unshifted key, so e.g. `"` (Shift+2) arrives as `2`. Right
+    /// Option (`VK.rightOption`, 61) is a separate physical key from left Option
+    /// (`VK.option`, 58): PC hosts behind a KVM only emit AltGr symbols with the
+    /// right one, so a `rightOption` stroke must never fall back to key 58.
+    ///
+    /// Press events carry the stroke's full flags; each release reports the
+    /// modifiers still held after it, so the key-up events show the correct
+    /// remaining state.
+    public static func modifierPlan(for stroke: KeyStroke) -> [KeyEvent] {
+        var mods: [(keyCode: CGKeyCode, mask: CGEventFlags)] = []
+        if stroke.shift { mods.append((VK.shift, .maskShift)) }
+        if stroke.option { mods.append((VK.option, .maskAlternate)) }
+        if stroke.rightOption { mods.append((VK.rightOption, .maskAlternate)) }
+
+        var plan: [KeyEvent] = []
+        // Press in order, every press carrying the full modifier flags.
+        for mod in mods {
+            plan.append(KeyEvent(keyCode: mod.keyCode, keyDown: true, flags: stroke.flags))
+        }
+        // Release in reverse, each event reporting the modifiers pressed before
+        // it that are still held (so shared masks stay set until their last
+        // holder releases).
+        for k in mods.indices.reversed() {
+            var remaining = CGEventFlags()
+            for j in 0..<k { remaining.formUnion(mods[j].mask) }
+            plan.append(KeyEvent(keyCode: mods[k].keyCode, keyDown: false, flags: remaining))
+        }
+        return plan
+    }
+
     /// Types `text` using `layout` with the timing/fallback rules in `config`.
     /// Returns the characters that could not be typed, so the caller can warn
     /// the user. Stops early (returning what was skipped so far) if ``cancel()``
@@ -135,33 +188,25 @@ public final class KeystrokeEngine: Sendable {
     }
 
     private func post(_ stroke: KeyStroke, source: CGEventSource?) {
-        // Press the required modifiers as real key-down events first. Local apps
-        // honor the per-event CGEventFlags below, but remote consoles
-        // (VNC/KVM/web terminals like Teleport) track the physical modifier key
-        // state and ignore event flags — without an actual Shift/Option press
-        // they receive the unshifted key, so e.g. `"` (Shift+2) arrives as `2`.
-        if stroke.shift { postModifier(VK.shift, keyDown: true, flags: stroke.flags, source: source) }
-        if stroke.option { postModifier(VK.option, keyDown: true, flags: stroke.flags, source: source) }
-
-        let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: false)
+        // Press the required real modifier keys first (see ``modifierPlan``),
+        // then the key itself, then release the modifiers in reverse.
+        let plan = Self.modifierPlan(for: stroke)
+        for event in plan where event.keyDown {
+            postEvent(event, source: source)
+        }
         // Set flags explicitly so unmodified strokes post with no modifiers.
-        down?.flags = stroke.flags
-        up?.flags = stroke.flags
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
-
-        // Release modifiers in reverse order, clearing their flag as we go so the
-        // key-up events report the correct remaining modifier state.
-        if stroke.option { postModifier(VK.option, keyDown: false, flags: stroke.shift ? .maskShift : [], source: source) }
-        if stroke.shift { postModifier(VK.shift, keyDown: false, flags: [], source: source) }
+        postEvent(KeyEvent(keyCode: stroke.keyCode, keyDown: true, flags: stroke.flags), source: source)
+        postEvent(KeyEvent(keyCode: stroke.keyCode, keyDown: false, flags: stroke.flags), source: source)
+        for event in plan where !event.keyDown {
+            postEvent(event, source: source)
+        }
     }
 
-    /// Posts a single modifier key-down or key-up event with the given flags.
-    private func postModifier(_ keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags, source: CGEventSource?) {
-        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
-        event?.flags = flags
-        event?.post(tap: .cghidEventTap)
+    /// Posts a single key-down or key-up event with the given flags.
+    private func postEvent(_ event: KeyEvent, source: CGEventSource?) {
+        let cg = CGEvent(keyboardEventSource: source, virtualKey: event.keyCode, keyDown: event.keyDown)
+        cg?.flags = event.flags
+        cg?.post(tap: .cghidEventTap)
     }
 
     /// Posts `character` directly via its UTF-16 code units using a virtual-key-0

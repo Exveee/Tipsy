@@ -126,6 +126,41 @@ expectEqual(ch.keyStroke(for: "z"), KeyStroke(keyCode: VK.y))
 // Swiss German is registered in the layout registry.
 expectEqual(Layouts.all.contains { $0.id == "ch-de" }, true)
 
+// MARK: - Modifier plan (#28 right Option / AltGr)
+
+// A right-Option stroke presses key code 61 and never left Option (58).
+let altgrPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.q, rightOption: true))
+expectEqual(altgrPlan.contains { $0.keyCode == VK.rightOption }, true, "AltGr must use key 61")
+expectEqual(altgrPlan.contains { $0.keyCode == 61 }, true)
+expectEqual(altgrPlan.contains { $0.keyCode == VK.option }, false, "AltGr must never fall back to 58")
+expectEqual(altgrPlan.contains { $0.keyCode == 58 }, false)
+// Right Option pressed then released, both carrying the ⌥ flag on press.
+expectEqual(altgrPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.rightOption, keyDown: true, flags: .maskAlternate),
+    KeystrokeEngine.KeyEvent(keyCode: VK.rightOption, keyDown: false, flags: []),
+])
+
+// A plain Shift stroke keeps today's semantics: press Shift, release Shift with
+// flags cleared, nothing else.
+let shiftPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.n1, shift: true))
+expectEqual(shiftPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: true, flags: .maskShift),
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: false, flags: []),
+])
+
+// Shift+Option releases Option first (leaving Shift held), then Shift — the
+// pre-existing progressive-flag-clearing behavior.
+let shiftOptPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.n7, shift: true, option: true))
+expectEqual(shiftOptPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: true, flags: [.maskShift, .maskAlternate]),
+    KeystrokeEngine.KeyEvent(keyCode: VK.option, keyDown: true, flags: [.maskShift, .maskAlternate]),
+    KeystrokeEngine.KeyEvent(keyCode: VK.option, keyDown: false, flags: .maskShift),
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: false, flags: []),
+])
+
+// An unmodified stroke needs no modifier events at all.
+expectEqual(KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.a)), [])
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
