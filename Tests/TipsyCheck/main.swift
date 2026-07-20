@@ -207,6 +207,34 @@ expectEqual(countPauses(pacedDeadKey), 5)
 expectEqual(isEventStep(pacedDeadKey.first), true)
 expectEqual(isEventStep(pacedDeadKey.last), true)
 
+// MARK: - KVM-safe config resolution (#30)
+
+// A remote-console config never enables Unicode fallback, even when the stored
+// user setting asks for it.
+let remoteCfg = TypingConfig(profile: .remoteConsole, unicodeFallback: true)
+expectEqual(remoteCfg.unicodeFallback, false)
+// Local targets keep the requested fallback.
+expectEqual(TypingConfig(profile: .localMac, unicodeFallback: true).unicodeFallback, true)
+// Pacing defaults to the profile's delay, and an explicit value overrides it.
+expectEqual(remoteCfg.interEventDelay, TargetProfile.remoteConsole.defaultInterEventDelay)
+expectEqual(TypingConfig(profile: .remoteConsole, interEventDelay: 0.02).interEventDelay, 0.02)
+expectEqual(TypingConfig(profile: .localMac).interEventDelay, 0)
+
+// MARK: - SkippedReport aggregation (#30)
+
+var report = SkippedReport()
+expectEqual(report.isEmpty, true)
+report.record("本", at: 3)
+report.record("x", at: 5)
+report.record("本", at: 7)
+expectEqual(report.isEmpty, false)
+expectEqual(report.entries.count, 2, "duplicates aggregate into one entry")
+expectEqual(report.totalCount, 3)
+expectEqual(report.uniqueCharacters, ["本", "x"], "unique, first-seen order")
+expectEqual(report.entries[0].count, 2)
+expectEqual(report.entries[0].firstIndex, 3, "first index is preserved")
+expectEqual(report.entries[1].firstIndex, 5)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")

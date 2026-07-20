@@ -44,6 +44,25 @@ public struct TypingConfig: Sendable {
         self.unicodeFallback = unicodeFallback
         self.interEventDelay = interEventDelay
     }
+
+    /// Builds a config constrained by the target `profile`.
+    ///
+    /// The profile overrides the stored user settings where typing would
+    /// otherwise be unsafe: ``TargetProfile/remoteConsole`` forces
+    /// ``unicodeFallback`` off (remote clients see only the virtual key code, so
+    /// a fallback character would arrive as a stray `a`), and pacing defaults to
+    /// ``TargetProfile/defaultInterEventDelay`` unless the caller passes an
+    /// explicit `interEventDelay`.
+    public init(profile: TargetProfile,
+                characterDelay: TimeInterval = 0.012,
+                jitter: TimeInterval = 0,
+                unicodeFallback: Bool = true,
+                interEventDelay: TimeInterval? = nil) {
+        self.characterDelay = characterDelay
+        self.jitter = jitter
+        self.unicodeFallback = profile.allowsUnicodeFallback && unicodeFallback
+        self.interEventDelay = interEventDelay ?? profile.defaultInterEventDelay
+    }
 }
 
 /// Turns text into synthesized keyboard events for the focused application.
@@ -181,33 +200,33 @@ public final class KeystrokeEngine: Sendable {
     }
 
     /// Types `text` using `layout` with the timing/fallback rules in `config`.
-    /// Returns the characters that could not be typed, so the caller can warn
-    /// the user. Stops early (returning what was skipped so far) if ``cancel()``
-    /// is called mid-run.
+    /// Returns a ``SkippedReport`` aggregating the characters that could not be
+    /// typed, so the caller can warn the user. Stops early (returning what was
+    /// skipped so far) if ``cancel()`` is called mid-run.
     ///
-    /// A character ends up in the returned array only when it has no layout
-    /// mapping *and* either ``TypingConfig/unicodeFallback`` is `false` or the
-    /// character could not be encoded as Unicode.
+    /// A character is skipped only when it has no layout mapping *and* either
+    /// ``TypingConfig/unicodeFallback`` is `false` or the character could not be
+    /// encoded as Unicode.
     @discardableResult
-    public func type(_ text: String, using layout: KeyboardLayout, config: TypingConfig) -> [Character] {
-        var skipped: [Character] = []
+    public func type(_ text: String, using layout: KeyboardLayout, config: TypingConfig) -> SkippedReport {
+        var skipped = SkippedReport()
         // `.privateState` so posted events do not inherit live hardware
         // modifiers (e.g. ⌘/⇧ still held from the hotkey), which would turn
         // typed characters into destructive chords.
         let source = CGEventSource(stateID: .privateState)
 
-        for character in text {
+        for (index, character) in text.enumerated() {
             if isCancelled { break }
 
             if let strokes = layout.strokes(for: character) {
                 post(strokes, source: source, config: config)
             } else if config.unicodeFallback {
                 if !postUnicode(character, source: source) {
-                    skipped.append(character)
+                    skipped.record(character, at: index)
                     continue
                 }
             } else {
-                skipped.append(character)
+                skipped.record(character, at: index)
                 continue
             }
             sleepAfterCharacter(config: config)
