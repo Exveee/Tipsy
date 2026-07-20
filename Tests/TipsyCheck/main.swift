@@ -227,6 +227,47 @@ expectEqual(dePC.keyStroke(for: "\n"), KeyStroke(keyCode: VK.return))
 // German (PC/Remote) is registered in the layout registry.
 expectEqual(Layouts.all.contains { $0.id == "de-pc" }, true)
 
+// US (PC/Remote): id, displayName, kind.
+let usPC = USPCLayout()
+expectEqual(usPC.id, "us-pc")
+expectEqual(usPC.displayName, "US (PC/Remote)")
+expectEqual(usPC.kind, LayoutKind.pcScancode)
+
+// Every printable ASCII character resolves to a key stroke.
+for scalar in UInt8(0x20)...UInt8(0x7E) {
+    let ch = Character(UnicodeScalar(scalar))
+    expectEqual(usPC.keyStroke(for: ch) != nil, true, "USPCLayout missing '\(ch)'")
+}
+
+// Spot-check letters and shifted digit-row symbols.
+expectEqual(usPC.keyStroke(for: "a"), KeyStroke(keyCode: VK.a))
+expectEqual(usPC.keyStroke(for: "A"), KeyStroke(keyCode: VK.a, shift: true))
+expectEqual(usPC.keyStroke(for: "z"), KeyStroke(keyCode: VK.z))
+expectEqual(usPC.keyStroke(for: "1"), KeyStroke(keyCode: VK.n1))
+expectEqual(usPC.keyStroke(for: "!"), KeyStroke(keyCode: VK.n1, shift: true))
+expectEqual(usPC.keyStroke(for: "2"), KeyStroke(keyCode: VK.n2))
+expectEqual(usPC.keyStroke(for: "@"), KeyStroke(keyCode: VK.n2, shift: true))
+
+// Spot-check punctuation, including the shifted symbols.
+expectEqual(usPC.keyStroke(for: "-"), KeyStroke(keyCode: VK.minus))
+expectEqual(usPC.keyStroke(for: "_"), KeyStroke(keyCode: VK.minus, shift: true))
+expectEqual(usPC.keyStroke(for: "["), KeyStroke(keyCode: VK.leftBracket))
+expectEqual(usPC.keyStroke(for: "{"), KeyStroke(keyCode: VK.leftBracket, shift: true))
+expectEqual(usPC.keyStroke(for: "`"), KeyStroke(keyCode: VK.grave))
+expectEqual(usPC.keyStroke(for: "~"), KeyStroke(keyCode: VK.grave, shift: true))
+
+// Whitespace.
+expectEqual(usPC.keyStroke(for: " "), KeyStroke(keyCode: VK.space))
+expectEqual(usPC.keyStroke(for: "\t"), KeyStroke(keyCode: VK.tab))
+expectEqual(usPC.keyStroke(for: "\n"), KeyStroke(keyCode: VK.return))
+
+// A US PC keyboard has no AltGr layer: Apple-only extras stay unmapped.
+expectNil(usPC.keyStroke(for: "§"))
+expectNil(usPC.keyStroke(for: "€"))
+
+// US (PC/Remote) is registered in the layout registry.
+expectEqual(Layouts.all.contains { $0.id == "us-pc" }, true)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
