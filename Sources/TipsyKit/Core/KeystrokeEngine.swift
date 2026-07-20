@@ -44,6 +44,25 @@ public struct TypingConfig: Sendable {
         self.unicodeFallback = unicodeFallback
         self.interEventDelay = interEventDelay
     }
+
+    /// Builds a config constrained by the target `profile`.
+    ///
+    /// The profile overrides the stored user settings where typing would
+    /// otherwise be unsafe: ``TargetProfile/remoteConsole`` forces
+    /// ``unicodeFallback`` off (remote clients see only the virtual key code, so
+    /// a fallback character would arrive as a stray `a`), and pacing defaults to
+    /// ``TargetProfile/defaultInterEventDelay`` unless the caller passes an
+    /// explicit `interEventDelay`.
+    public init(profile: TargetProfile,
+                characterDelay: TimeInterval = 0.012,
+                jitter: TimeInterval = 0,
+                unicodeFallback: Bool = true,
+                interEventDelay: TimeInterval? = nil) {
+        self.characterDelay = characterDelay
+        self.jitter = jitter
+        self.unicodeFallback = profile.allowsUnicodeFallback && unicodeFallback
+        self.interEventDelay = interEventDelay ?? profile.defaultInterEventDelay
+    }
 }
 
 /// Turns text into synthesized keyboard events for the focused application.
@@ -68,7 +87,15 @@ public final class KeystrokeEngine: Sendable {
     /// background serial queue.
     private let cancelled = OSAllocatedUnfairLock(initialState: false)
 
-    public init() {}
+    /// Blocking sleep primitive, called for every intra-stroke and
+    /// inter-character pause. Injected so tests can record pauses instead of
+    /// actually sleeping; captured as an immutable `@Sendable` `let` so the
+    /// engine stays `Sendable` and safe to run from a background queue.
+    private let sleeper: @Sendable (TimeInterval) -> Void
+
+    public init(sleeper: @escaping @Sendable (TimeInterval) -> Void = { Thread.sleep(forTimeInterval: $0) }) {
+        self.sleeper = sleeper
+    }
 
     /// Requests that an in-flight run stop at the next character boundary.
     /// Safe to call from any thread.
@@ -86,36 +113,120 @@ public final class KeystrokeEngine: Sendable {
         cancelled.withLock { $0 }
     }
 
-    /// Types `text` using `layout` with the timing/fallback rules in `config`.
-    /// Returns the characters that could not be typed, so the caller can warn
-    /// the user. Stops early (returning what was skipped so far) if ``cancel()``
-    /// is called mid-run.
+    /// One synthesized keyboard event: which virtual key, whether it is a press
+    /// or a release, and the modifier flags the event should carry. Both the
+    /// engine and the tests build event sequences out of these so the posting
+    /// order can be verified without Quartz.
+    public struct KeyEvent: Equatable {
+        public let keyCode: CGKeyCode
+        public let keyDown: Bool
+        public let flags: CGEventFlags
+
+        public init(keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags) {
+            self.keyCode = keyCode
+            self.keyDown = keyDown
+            self.flags = flags
+        }
+    }
+
+    /// Pure plan of the real modifier key events a stroke needs, in posting
+    /// order: presses (Shift → Option → right Option) followed by releases in
+    /// reverse.
     ///
-    /// A character ends up in the returned array only when it has no layout
-    /// mapping *and* either ``TypingConfig/unicodeFallback`` is `false` or the
-    /// character could not be encoded as Unicode.
+    /// Local apps honor the per-event `CGEventFlags`, but remote consoles
+    /// (VNC/KVM/web terminals like Teleport) track the *physical* modifier key
+    /// state and ignore event flags — without an actual Shift/Option press they
+    /// receive the unshifted key, so e.g. `"` (Shift+2) arrives as `2`. Right
+    /// Option (`VK.rightOption`, 61) is a separate physical key from left Option
+    /// (`VK.option`, 58): PC hosts behind a KVM only emit AltGr symbols with the
+    /// right one, so a `rightOption` stroke must never fall back to key 58.
+    ///
+    /// Press events carry the stroke's full flags; each release reports the
+    /// modifiers still held after it, so the key-up events show the correct
+    /// remaining state.
+    public static func modifierPlan(for stroke: KeyStroke) -> [KeyEvent] {
+        var mods: [(keyCode: CGKeyCode, mask: CGEventFlags)] = []
+        if stroke.shift { mods.append((VK.shift, .maskShift)) }
+        if stroke.option { mods.append((VK.option, .maskAlternate)) }
+        if stroke.rightOption { mods.append((VK.rightOption, .maskAlternate)) }
+
+        var plan: [KeyEvent] = []
+        // Press in order, every press carrying the full modifier flags.
+        for mod in mods {
+            plan.append(KeyEvent(keyCode: mod.keyCode, keyDown: true, flags: stroke.flags))
+        }
+        // Release in reverse, each event reporting the modifiers pressed before
+        // it that are still held (so shared masks stay set until their last
+        // holder releases).
+        for k in mods.indices.reversed() {
+            var remaining = CGEventFlags()
+            for j in 0..<k { remaining.formUnion(mods[j].mask) }
+            plan.append(KeyEvent(keyCode: mods[k].keyCode, keyDown: false, flags: remaining))
+        }
+        return plan
+    }
+
+    /// One step of a character's execution plan: a synthesized event or a pause.
+    public enum PostStep: Equatable {
+        case event(KeyEvent)
+        case pause(TimeInterval)
+    }
+
+    /// Pure, ordered plan for a whole character's stroke sequence: every key
+    /// event (modifier presses, key down, key up, modifier releases, and each
+    /// dead-key step) with an `interEventDelay` pause interleaved *between*
+    /// consecutive events.
+    ///
+    /// With `interEventDelay == 0` no `.pause` steps are emitted at all, so the
+    /// event stream — and its timing — is byte-identical to posting back-to-back.
+    /// The engine executes this list; tests assert on it directly.
+    public static func postPlan(for strokes: [KeyStroke], interEventDelay: TimeInterval) -> [PostStep] {
+        // Flatten every stroke into its ordered key events.
+        var events: [KeyEvent] = []
+        for stroke in strokes {
+            let plan = modifierPlan(for: stroke)
+            for event in plan where event.keyDown { events.append(event) }
+            events.append(KeyEvent(keyCode: stroke.keyCode, keyDown: true, flags: stroke.flags))
+            events.append(KeyEvent(keyCode: stroke.keyCode, keyDown: false, flags: stroke.flags))
+            for event in plan where !event.keyDown { events.append(event) }
+        }
+        // Interleave a pause before every event except the first.
+        var steps: [PostStep] = []
+        for (index, event) in events.enumerated() {
+            if index > 0, interEventDelay > 0 { steps.append(.pause(interEventDelay)) }
+            steps.append(.event(event))
+        }
+        return steps
+    }
+
+    /// Types `text` using `layout` with the timing/fallback rules in `config`.
+    /// Returns a ``SkippedReport`` aggregating the characters that could not be
+    /// typed, so the caller can warn the user. Stops early (returning what was
+    /// skipped so far) if ``cancel()`` is called mid-run.
+    ///
+    /// A character is skipped only when it has no layout mapping *and* either
+    /// ``TypingConfig/unicodeFallback`` is `false` or the character could not be
+    /// encoded as Unicode.
     @discardableResult
-    public func type(_ text: String, using layout: KeyboardLayout, config: TypingConfig) -> [Character] {
-        var skipped: [Character] = []
+    public func type(_ text: String, using layout: KeyboardLayout, config: TypingConfig) -> SkippedReport {
+        var skipped = SkippedReport()
         // `.privateState` so posted events do not inherit live hardware
         // modifiers (e.g. ⌘/⇧ still held from the hotkey), which would turn
         // typed characters into destructive chords.
         let source = CGEventSource(stateID: .privateState)
 
-        for character in text {
+        for (index, character) in text.enumerated() {
             if isCancelled { break }
 
             if let strokes = layout.strokes(for: character) {
-                for stroke in strokes {
-                    post(stroke, source: source)
-                }
+                post(strokes, source: source, config: config)
             } else if config.unicodeFallback {
                 if !postUnicode(character, source: source) {
-                    skipped.append(character)
+                    skipped.record(character, at: index)
                     continue
                 }
             } else {
-                skipped.append(character)
+                skipped.record(character, at: index)
                 continue
             }
             sleepAfterCharacter(config: config)
@@ -130,38 +241,26 @@ public final class KeystrokeEngine: Sendable {
             delay = max(0, config.characterDelay + Double.random(in: -config.jitter...config.jitter))
         }
         if delay > 0 {
-            Thread.sleep(forTimeInterval: delay)
+            sleeper(delay)
         }
     }
 
-    private func post(_ stroke: KeyStroke, source: CGEventSource?) {
-        // Press the required modifiers as real key-down events first. Local apps
-        // honor the per-event CGEventFlags below, but remote consoles
-        // (VNC/KVM/web terminals like Teleport) track the physical modifier key
-        // state and ignore event flags — without an actual Shift/Option press
-        // they receive the unshifted key, so e.g. `"` (Shift+2) arrives as `2`.
-        if stroke.shift { postModifier(VK.shift, keyDown: true, flags: stroke.flags, source: source) }
-        if stroke.option { postModifier(VK.option, keyDown: true, flags: stroke.flags, source: source) }
-
-        let down = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: true)
-        let up = CGEvent(keyboardEventSource: source, virtualKey: stroke.keyCode, keyDown: false)
-        // Set flags explicitly so unmodified strokes post with no modifiers.
-        down?.flags = stroke.flags
-        up?.flags = stroke.flags
-        down?.post(tap: .cghidEventTap)
-        up?.post(tap: .cghidEventTap)
-
-        // Release modifiers in reverse order, clearing their flag as we go so the
-        // key-up events report the correct remaining modifier state.
-        if stroke.option { postModifier(VK.option, keyDown: false, flags: stroke.shift ? .maskShift : [], source: source) }
-        if stroke.shift { postModifier(VK.shift, keyDown: false, flags: [], source: source) }
+    /// Posts every event for `strokes`, pausing `config.interEventDelay` between
+    /// consecutive events (see ``postPlan(for:interEventDelay:)``).
+    private func post(_ strokes: [KeyStroke], source: CGEventSource?, config: TypingConfig) {
+        for step in Self.postPlan(for: strokes, interEventDelay: config.interEventDelay) {
+            switch step {
+            case .event(let event): postEvent(event, source: source)
+            case .pause(let delay): sleeper(delay)
+            }
+        }
     }
 
-    /// Posts a single modifier key-down or key-up event with the given flags.
-    private func postModifier(_ keyCode: CGKeyCode, keyDown: Bool, flags: CGEventFlags, source: CGEventSource?) {
-        let event = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: keyDown)
-        event?.flags = flags
-        event?.post(tap: .cghidEventTap)
+    /// Posts a single key-down or key-up event with the given flags.
+    private func postEvent(_ event: KeyEvent, source: CGEventSource?) {
+        let cg = CGEvent(keyboardEventSource: source, virtualKey: event.keyCode, keyDown: event.keyDown)
+        cg?.flags = event.flags
+        cg?.post(tap: .cghidEventTap)
     }
 
     /// Posts `character` directly via its UTF-16 code units using a virtual-key-0

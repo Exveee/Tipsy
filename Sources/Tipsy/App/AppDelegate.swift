@@ -254,7 +254,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
             // #12: run the blocking loop on the single serial queue, bridged
             // back to the main actor for completion handling.
-            let skipped: [Character] = await withCheckedContinuation { continuation in
+            let skipped: SkippedReport = await withCheckedContinuation { continuation in
                 queue.async {
                     continuation.resume(returning: engine.type(text, using: layout, config: config))
                 }
@@ -263,7 +263,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             let wasCancelled = Task.isCancelled
             self.finishTyping()
             if !wasCancelled, !skipped.isEmpty {
-                self.notify("Couldn't type \(skipped.count) character(s) not available in the \"\(layout.displayName)\" layout.")
+                let chars = String(skipped.uniqueCharacters)
+                self.notify("Couldn't type \(skipped.totalCount) character(s) not available in the \"\(layout.displayName)\" layout: \(chars)")
             }
         }
     }

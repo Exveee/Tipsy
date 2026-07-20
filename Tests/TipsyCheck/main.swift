@@ -357,6 +357,115 @@ noneEnabled.lineEndings = false
 noneEnabled.ellipsis = false
 expectEqual(TextNormalization.normalize(fancyText, options: noneEnabled), fancyText, "all rules disabled: no-op")
 
+// MARK: - Modifier plan (#28 right Option / AltGr)
+
+// A right-Option stroke presses key code 61 and never left Option (58).
+let altgrPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.q, rightOption: true))
+expectEqual(altgrPlan.contains { $0.keyCode == VK.rightOption }, true, "AltGr must use key 61")
+expectEqual(altgrPlan.contains { $0.keyCode == 61 }, true)
+expectEqual(altgrPlan.contains { $0.keyCode == VK.option }, false, "AltGr must never fall back to 58")
+expectEqual(altgrPlan.contains { $0.keyCode == 58 }, false)
+// Right Option pressed then released, both carrying the ⌥ flag on press.
+expectEqual(altgrPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.rightOption, keyDown: true, flags: .maskAlternate),
+    KeystrokeEngine.KeyEvent(keyCode: VK.rightOption, keyDown: false, flags: []),
+])
+
+// A plain Shift stroke keeps today's semantics: press Shift, release Shift with
+// flags cleared, nothing else.
+let shiftPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.n1, shift: true))
+expectEqual(shiftPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: true, flags: .maskShift),
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: false, flags: []),
+])
+
+// Shift+Option releases Option first (leaving Shift held), then Shift — the
+// pre-existing progressive-flag-clearing behavior.
+let shiftOptPlan = KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.n7, shift: true, option: true))
+expectEqual(shiftOptPlan, [
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: true, flags: [.maskShift, .maskAlternate]),
+    KeystrokeEngine.KeyEvent(keyCode: VK.option, keyDown: true, flags: [.maskShift, .maskAlternate]),
+    KeystrokeEngine.KeyEvent(keyCode: VK.option, keyDown: false, flags: .maskShift),
+    KeystrokeEngine.KeyEvent(keyCode: VK.shift, keyDown: false, flags: []),
+])
+
+// An unmodified stroke needs no modifier events at all.
+expectEqual(KeystrokeEngine.modifierPlan(for: KeyStroke(keyCode: VK.a)), [])
+
+// MARK: - Intra-stroke pacing (#29 interEventDelay)
+
+func countEvents(_ steps: [KeystrokeEngine.PostStep]) -> Int {
+    steps.filter { if case .event = $0 { return true } else { return false } }.count
+}
+func countPauses(_ steps: [KeystrokeEngine.PostStep]) -> Int {
+    steps.filter { if case .pause = $0 { return true } else { return false } }.count
+}
+func isEventStep(_ step: KeystrokeEngine.PostStep?) -> Bool {
+    if case .event = step { return true } else { return false }
+}
+
+// A shifted stroke posts 4 events (Shift down, key down, key up, Shift up); with
+// a delay set, 3 pauses sit strictly between them.
+let pacedShift = KeystrokeEngine.postPlan(for: [KeyStroke(keyCode: VK.n1, shift: true)],
+                                          interEventDelay: 0.005)
+expectEqual(countEvents(pacedShift), 4)
+expectEqual(countPauses(pacedShift), 3)
+expectEqual(isEventStep(pacedShift.first), true, "plan must not start with a pause")
+expectEqual(isEventStep(pacedShift.last), true, "plan must not end with a pause")
+expectEqual(pacedShift == [
+    .event(.init(keyCode: VK.shift, keyDown: true, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.n1, keyDown: true, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.n1, keyDown: false, flags: .maskShift)),
+    .pause(0.005),
+    .event(.init(keyCode: VK.shift, keyDown: false, flags: [])),
+], true)
+
+// interEventDelay 0 → no pauses at all: byte-identical event stream.
+let unpacedShift = KeystrokeEngine.postPlan(for: [KeyStroke(keyCode: VK.n1, shift: true)],
+                                            interEventDelay: 0)
+expectEqual(countEvents(unpacedShift), 4)
+expectEqual(countPauses(unpacedShift), 0)
+expectEqual(unpacedShift.count, 4)
+
+// A dead-key sequence (German `~` = ⌥n then space) is one plan spanning both
+// strokes: 4 + 2 = 6 events, 5 pauses, including one between the two strokes.
+let deadKeyStrokes = de.strokes(for: "~")!
+let pacedDeadKey = KeystrokeEngine.postPlan(for: deadKeyStrokes, interEventDelay: 0.005)
+expectEqual(countEvents(pacedDeadKey), 6)
+expectEqual(countPauses(pacedDeadKey), 5)
+expectEqual(isEventStep(pacedDeadKey.first), true)
+expectEqual(isEventStep(pacedDeadKey.last), true)
+
+// MARK: - KVM-safe config resolution (#30)
+
+// A remote-console config never enables Unicode fallback, even when the stored
+// user setting asks for it.
+let remoteCfg = TypingConfig(profile: .remoteConsole, unicodeFallback: true)
+expectEqual(remoteCfg.unicodeFallback, false)
+// Local targets keep the requested fallback.
+expectEqual(TypingConfig(profile: .localMac, unicodeFallback: true).unicodeFallback, true)
+// Pacing defaults to the profile's delay, and an explicit value overrides it.
+expectEqual(remoteCfg.interEventDelay, TargetProfile.remoteConsole.defaultInterEventDelay)
+expectEqual(TypingConfig(profile: .remoteConsole, interEventDelay: 0.02).interEventDelay, 0.02)
+expectEqual(TypingConfig(profile: .localMac).interEventDelay, 0)
+
+// MARK: - SkippedReport aggregation (#30)
+
+var report = SkippedReport()
+expectEqual(report.isEmpty, true)
+report.record("本", at: 3)
+report.record("x", at: 5)
+report.record("本", at: 7)
+expectEqual(report.isEmpty, false)
+expectEqual(report.entries.count, 2, "duplicates aggregate into one entry")
+expectEqual(report.totalCount, 3)
+expectEqual(report.uniqueCharacters, ["本", "x"], "unique, first-seen order")
+expectEqual(report.entries[0].count, 2)
+expectEqual(report.entries[0].firstIndex, 3, "first index is preserved")
+expectEqual(report.entries[1].firstIndex, 5)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
