@@ -122,6 +122,46 @@ private let deadKeys: [Character: [KeyStroke]] = [
 dead-key sequence, leave the character unmapped (`nil`) — the Unicode fallback
 handles it — and note the gap in the layout's doc comment.
 
+## 4b. `LayoutKind`: Apple-local vs. PC/remote
+
+`KeyboardLayout` has a `kind: LayoutKind { get }` requirement
+(`Sources/TipsyKit/Layouts/KeyboardLayout.swift`), defaulted to
+`.appleLocal` so existing layouts don't need to opt in:
+
+```swift
+public enum LayoutKind: Sendable, Equatable {
+    case appleLocal   // positions for the local macOS input source
+    case pcScancode    // positions for a remote host behind a scancode KVM
+}
+```
+
+- **`.appleLocal`** (the default): key positions are chosen so **macOS's own
+  input source**, running locally, composes the right character. This is
+  what `GermanLayout`, `USLayout`, `UKLayout`, and `SwissGermanLayout` do.
+  Third-level (AltGr) symbols use `option` (left ⌥), because that's the key
+  Apple's local drivers treat as AltGr.
+- **`.pcScancode`**: the strokes target a **remote machine reached through a
+  scancode-forwarding KVM** (VNC/IPMI/web console). The KVM client translates
+  the Mac virtual key code you post into a physical key *position* (a browser
+  DOM `code`, e.g. `"KeyQ"`) and forwards that position; the remote OS then
+  interprets it with its own **PC** keyboard driver, not Apple's. Two
+  consequences:
+  - Third-level symbols must use `KeyStroke.rightOption` (AltGr on a PC
+    keyboard is the **right** Alt key), never `option` — left Alt is a plain
+    modifier on Windows/Linux and will not produce the symbol.
+  - Some positions differ from the Apple-local layout even for
+    non-AltGr characters (e.g. where `°` or `~` sit) because Apple and PC
+    keyboards don't map their extra punctuation keys identically. Verify
+    against the target OS's real layout, not the Apple one, when writing a
+    `.pcScancode` layout — see `GermanPCLayout` for a worked example,
+    including its ISO-key caveat (`VK.section` / DOM `"IntlBackslash"` may not
+    exist on an ANSI-only KVM client).
+
+Set `kind` as a stored property (`public let kind: LayoutKind = .pcScancode`)
+on layouts targeting a remote console; leave it unset (inheriting the
+`.appleLocal` default) for anything meant to type into apps running on this
+Mac.
+
 ## 5. Register the layout
 
 Add an instance to the registry in `KeyboardLayout.swift`:
