@@ -5,6 +5,7 @@
 // assertions, prints `✗ FAIL: ...` for each failure, and exits non-zero if any
 // check failed. Run via `swift run TipsyCheck` (or `./Scripts/check.sh`).
 
+import Carbon.HIToolbox
 import Foundation
 import TipsyKit
 
@@ -125,6 +126,79 @@ expectEqual(ch.keyStroke(for: "z"), KeyStroke(keyCode: VK.y))
 
 // Swiss German is registered in the layout registry.
 expectEqual(Layouts.all.contains { $0.id == "ch-de" }, true)
+
+// MARK: - DynamicLocalLayout self-consistency
+
+// This layout reverse-maps through whatever input source is active on the CI
+// machine, so we assert *properties* (round-trip, universal chars) rather than
+// layout-specific expectations, which vary per machine.
+
+/// Grabs the current source's Unicode key layout, if any (CJK input methods
+/// expose none). Kept alive for the caller via the returned CFData box.
+func currentKeyLayout() -> (data: CFData, ptr: UnsafePointer<UCKeyboardLayout>)? {
+    guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+          let layoutPtr = TISGetInputSourceProperty(source, kTISPropertyUnicodeKeyLayoutData) else {
+        return nil
+    }
+    let data = Unmanaged<CFData>.fromOpaque(layoutPtr).takeUnretainedValue()
+    guard let bytes = CFDataGetBytePtr(data) else { return nil }
+    return (data, UnsafeRawPointer(bytes).assumingMemoryBound(to: UCKeyboardLayout.self))
+}
+
+/// Forward-translates a stroke sequence back into the string it should type,
+/// threading `deadKeyState` so a `[deadAccent, space]` pair resolves to the
+/// spacing accent — the inverse of what DynamicLocalLayout records.
+func forwardTranslate(_ strokes: [KeyStroke], _ keyLayout: UnsafePointer<UCKeyboardLayout>) -> String {
+    let keyboardType = UInt32(LMGetKbdType())
+    var deadKeyState: UInt32 = 0
+    var output = ""
+    for stroke in strokes {
+        var state: UInt32 = 0
+        if stroke.shift { state |= UInt32(shiftKey >> 8) }
+        if stroke.option || stroke.rightOption { state |= UInt32(optionKey >> 8) }
+        var chars = [UniChar](repeating: 0, count: 8)
+        var length = 0
+        let status = UCKeyTranslate(keyLayout, UInt16(stroke.keyCode), UInt16(kUCKeyActionDown),
+                                    state, keyboardType, OptionBits(0),
+                                    &deadKeyState, chars.count, &length, &chars)
+        if status == noErr, length > 0 {
+            output += String(utf16CodeUnits: chars, count: length)
+        }
+    }
+    return output
+}
+
+let dynamic = DynamicLocalLayout()
+expectEqual(dynamic.id, "dynamic")
+expectEqual(dynamic.kind, .appleLocal)
+
+if let (data, keyLayout) = currentKeyLayout() {
+    withExtendedLifetime(data) {
+        // Round-trip: every character this machine's source maps must forward-
+        // translate back to itself. Probe printable ASCII plus common accented
+        // Latin so dead-key sequences are exercised where the source has them.
+        var candidates = Array("abcdefghijklmnopqrstuvwxyz0123456789")
+        candidates += Array(" !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~")
+        candidates += Array("äöüßàáâãèéêìíîòóôùúûñçÄÖÜ€£°´`^~")
+        for c in candidates {
+            if let strokes = dynamic.strokes(for: c) {
+                let produced = forwardTranslate(strokes, keyLayout)
+                expectEqual(produced, String(c), "dynamic round-trip for U+\(String(format: "%04X", c.unicodeScalars.first!.value))")
+            }
+        }
+
+        // Universal characters that survive any Latin source with layout data.
+        expectEqual(dynamic.strokes(for: " ") != nil, true, "space resolves")
+        expectEqual(dynamic.strokes(for: "\n") != nil, true, "newline resolves")
+        for digit in "0123456789" {
+            expectEqual(dynamic.keyStroke(for: digit) != nil, true, "digit \(digit) resolves")
+        }
+    }
+} else {
+    // Input methods (CJK) expose no layout data: the map is empty by design and
+    // every character falls through to the engine's own handling.
+    expectNil(dynamic.keyStroke(for: "a"), "no layout data => empty map")
+}
 
 // MARK: - Summary
 
