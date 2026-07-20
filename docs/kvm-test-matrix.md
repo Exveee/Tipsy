@@ -59,7 +59,7 @@ For each result, add the tester's initials and the date (e.g., `✓ PD 2025-02-1
 | **TextEdit (local)** | – | – | n/a | n/a |
 | **Browser key-event echo** | – | – | n/a | n/a |
 | **Guacamole/Teleport web KVM** | – | – | – | – |
-| **PiKVM or IPMI console** | – | – | – | – |
+| **PiKVM or IPMI console** | – | – | ✓ PD 2026-07-20 | – |
 | **VNC client (TigerVNC, RealVNC)** | – | – | – | – |
 
 ### Legend
