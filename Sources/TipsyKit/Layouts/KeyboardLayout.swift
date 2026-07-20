@@ -44,5 +44,5 @@ public extension KeyboardLayout {
 /// Registry of layouts shipped with Tipsy.
 public enum Layouts {
     /// All available layouts. The first entry is the default.
-    public static let all: [KeyboardLayout] = [GermanLayout(), USLayout(), UKLayout(), SwissGermanLayout()]
+    public static let all: [KeyboardLayout] = [GermanLayout(), USLayout(), UKLayout(), SwissGermanLayout(), GermanPCLayout()]
 }
