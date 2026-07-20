@@ -48,4 +48,12 @@ public enum TargetProfile: String, CaseIterable, Sendable {
         case .remoteConsole: return .pcScancode
         }
     }
+
+    /// Human-readable name shown in the menu and Preferences popup.
+    public var displayName: String {
+        switch self {
+        case .localMac: return "Local Mac"
+        case .remoteConsole: return "Remote console (KVM)"
+        }
+    }
 }

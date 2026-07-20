@@ -11,6 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private let layouts = Layouts.all
     private var activeLayout: KeyboardLayout
 
+    /// Where the current keystrokes are interpreted; drives which layouts are
+    /// offered and how the typing path is configured.
+    private var activeProfile: TargetProfile = .localMac
+
+    /// (inputSourceID, layoutID) pairs already warned about this app run, so the
+    /// mismatch alert fires at most once per pair per run even when the user has
+    /// not permanently suppressed it (#35).
+    private var warnedMismatchPairs: Set<String> = []
+
     /// Seconds to wait after triggering so the user can focus the target window.
     private var leadTime: TimeInterval = 3
 
@@ -80,6 +89,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// ``TypingConfig`` (see ``typeClipboard``), not stored on the engine.
     private func applySettings() {
         leadTime = Settings.leadTime
+        activeProfile = Settings.targetProfile
         activeLayout = layouts.first { $0.id == Settings.layoutID } ?? layouts[0]
     }
 
@@ -131,10 +141,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         menu.addItem(.separator())
 
+        // Target profile section: a radio pair choosing where the keystrokes are
+        // interpreted. It gates which layouts the list below offers.
+        let targetHeader = NSMenuItem(title: "Target", action: nil, keyEquivalent: "")
+        targetHeader.isEnabled = false
+        menu.addItem(targetHeader)
+        for profile in TargetProfile.allCases {
+            let item = NSMenuItem(title: profile.displayName,
+                                  action: #selector(selectProfile(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = profile.rawValue
+            item.state = profile == activeProfile ? .on : .off
+            menu.addItem(item)
+        }
+
+        menu.addItem(.separator())
+
+        // Layout list, filtered to the layouts valid for the active profile.
         let header = NSMenuItem(title: "Layout", action: nil, keyEquivalent: "")
         header.isEnabled = false
         menu.addItem(header)
-        for layout in layouts {
+        for layout in Layouts.matching(kind: activeProfile.layoutKind) {
             let item = NSMenuItem(title: layout.displayName,
                                   action: #selector(selectLayout(_:)), keyEquivalent: "")
             item.target = self
@@ -156,12 +183,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         statusItem.menu = menu
     }
 
+    @objc private func selectProfile(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let profile = TargetProfile(rawValue: raw) else { return }
+        activeProfile = profile
+        Settings.targetProfile = profile
+        // Auto-select the first matching layout when the current one's kind no
+        // longer fits the new profile, and persist that choice.
+        let resolved = Layouts.resolvedLayoutID(for: profile, current: activeLayout.id)
+        if resolved != activeLayout.id, let layout = layouts.first(where: { $0.id == resolved }) {
+            activeLayout = layout
+            Settings.layoutID = resolved
+        }
+        rebuildMenu()
+        // Reflect the change in an open Preferences window.
+        preferences?.reloadFromSettings()
+    }
+
     @objc private func selectLayout(_ sender: NSMenuItem) {
         guard let id = sender.representedObject as? String,
               let layout = layouts.first(where: { $0.id == id }) else { return }
         activeLayout = layout
         Settings.layoutID = id
         rebuildMenu()
+        preferences?.reloadFromSettings()
     }
 
     @objc private func openPreferences() {
@@ -194,9 +239,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
         // #15: hold the secret only as a local; never store it on `self`, and
         // drop the reference as soon as the run finishes.
-        guard let text = ClipboardReader.text(), !text.isEmpty else {
+        guard let rawText = ClipboardReader.text(), !rawText.isEmpty else {
             notify("Clipboard is empty")
             return
+        }
+
+        let profile = activeProfile
+
+        // #35: rewrite typographic characters to typeable ASCII per the profile's
+        // preset before anything else, so the remote console never sees a
+        // character it can't produce (and the length check below counts the real
+        // work). Skipped entirely when the user turned normalization off.
+        let text: String
+        if Settings.normalizationEnabled {
+            let options: NormalizationOptions =
+                profile == .remoteConsole ? .remoteConsole : .localMac
+            text = TextNormalization.normalize(rawText, options: options)
+        } else {
+            text = rawText
+        }
+
+        let layout = activeLayout
+
+        // #35: warn (once, unless suppressed) when the macOS input source that
+        // would interpret local keystrokes doesn't match the selected layout.
+        // Only meaningful for `.localMac`: remote consoles interpret key
+        // positions with their own layout, ignoring the local input source.
+        if profile == .localMac,
+           !Settings.mismatchWarningSuppressed,
+           let sourceID = InputSourceMatch.currentInputSourceID(),
+           !InputSourceMatch.matches(inputSourceID: sourceID, layoutID: layout.id) {
+            let pair = "\(sourceID)\u{0}\(layout.id)"
+            if !warnedMismatchPairs.contains(pair) {
+                warnedMismatchPairs.insert(pair)
+                guard confirmInputSourceMismatch(sourceID: sourceID, layout: layout) else { return }
+            }
         }
 
         // #22: confirm before typing a huge clipboard that would block for ages.
@@ -210,14 +287,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
 
-        // #12: snapshot tuning into an immutable, Sendable config at trigger
-        // time so the background run never races the main actor.
+        // #12/#35: snapshot tuning into an immutable, Sendable config at trigger
+        // time so the background run never races the main actor. The profile
+        // constrains it — forcing off the Unicode fallback on a remote console
+        // and supplying default event pacing unless the user overrode it.
         let config = TypingConfig(
+            profile: profile,
             characterDelay: Settings.characterDelay,
             jitter: Settings.jitter,
-            unicodeFallback: Settings.unicodeFallback
+            unicodeFallback: Settings.unicodeFallback,
+            interEventDelay: Settings.interEventDelay
         )
-        let layout = activeLayout
         let engine = self.engine
         let queue = typingQueue
         let cueEnabled = Settings.cueSoundEnabled
@@ -288,6 +368,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             return isTyping
         }
         return true
+    }
+
+    /// Shows the input-source mismatch alert before the countdown. Returns
+    /// `true` to proceed ("Continue anyway"), `false` to cancel. A
+    /// "Don't warn again" checkbox permanently suppresses the warning.
+    private func confirmInputSourceMismatch(sourceID: String,
+                                            layout: KeyboardLayout) -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Keyboard layout may not match"
+        alert.informativeText = """
+        The selected layout is "\(layout.displayName)", but the active macOS \
+        input source is "\(sourceID)". Characters may be typed wrong. Switch \
+        your input source, or continue anyway.
+        """
+        alert.addButton(withTitle: "Continue anyway")
+        alert.addButton(withTitle: "Cancel")
+
+        let suppress = NSButton(checkboxWithTitle: "Don't warn again", target: nil, action: nil)
+        alert.accessoryView = suppress
+
+        let response = alert.runModal()
+        if suppress.state == .on {
+            Settings.mismatchWarningSuppressed = true
+        }
+        return response == .alertFirstButtonReturn
     }
 
     private func notify(_ message: String) {

@@ -97,19 +97,32 @@ values directly.
    hotkey if enabled.
 
 The menu contains: **Type Clipboard** (shows the current lead time; its keyboard
-accelerator mirrors the configured hotkey via `HotkeyFormat`), a radio list of
-layouts (checkmark on the active one), **Preferences…**, and **Quit**. Selecting
-a layout writes `Settings.layoutID` and rebuilds the menu.
+accelerator mirrors the configured hotkey via `HotkeyFormat`), a **Target** radio
+pair (`localMac` / `remoteConsole`), a radio list of layouts *filtered to the
+active target's `layoutKind`* (checkmark on the active one), **Preferences…**, and
+**Quit**. Selecting a layout writes `Settings.layoutID`; selecting a target writes
+`Settings.targetProfile` and, when the current layout's kind no longer fits,
+auto-selects the first matching layout via `Layouts.resolvedLayoutID(for:current:)`
+and persists it. Both rebuild the menu.
 
 ### Triggering a type
 
 Both the menu item and the global hotkey call `typeClipboard()`:
 
-1. Read the clipboard; bail with an alert if empty.
-2. Verify `AccessibilityManager.isTrusted`; bail with an alert if not.
-3. Play the cue sound (`PasteCueSound.shared.play()`) when enabled.
-4. Capture the active layout, then after `leadTime` seconds dispatch
-   `engine.type(text, using: layout)` on a background queue.
+1. Verify `AccessibilityManager.isTrusted`; bail with an alert if not.
+2. Read the clipboard; bail with an alert if empty.
+3. Normalize typographic characters (when enabled) with the active profile's
+   preset — `.remoteConsole` (all rules) or `.localMac` (only invisibles and
+   line endings).
+4. For `.localMac`, if the active macOS input source doesn't match the selected
+   layout (`InputSourceMatch`), show a "may not match" alert *before* the
+   countdown with **Continue anyway** / **Cancel** and a **Don't warn again**
+   checkbox — at most once per (input source, layout) pair per run, and never
+   once permanently suppressed.
+5. Snapshot the tuning into a profile-constrained `TypingConfig(profile:…)`
+   (which forces the Unicode fallback off on `remoteConsole` and supplies its
+   default event pacing unless overridden), then after `leadTime` seconds
+   dispatch `engine.type(text, using: layout, config:)` on a background queue.
 
 The **lead time** is the deliberate pause that lets the user click into the
 target window (a KVM/console field) before typing begins.
@@ -122,10 +135,14 @@ survive relaunches; defaults are returned for keys that were never written.
 
 | Key | Default | Meaning |
 |-----|---------|---------|
-| `tipsy.layoutID` | first layout (`de`) | Active keyboard layout |
+| `tipsy.targetProfile` | `localMac` | Where keystrokes are interpreted (`TargetProfile` raw value: `localMac` / `remoteConsole`) |
+| `tipsy.layoutID` | `de` (`Layouts.defaultLayoutID`) | Active keyboard layout |
 | `tipsy.characterDelay` | `0.012` | Seconds between characters |
 | `tipsy.jitter` | `0` | Random ± variation on each delay |
-| `tipsy.unicodeFallback` | `true` | Type unmapped chars as Unicode |
+| `tipsy.interEventDelay` | unset (nil) | Override for the pause *inside* one stroke (0–0.05s); unset uses the profile default |
+| `tipsy.normalizationEnabled` | `true` | Rewrite typographic characters per the profile's preset before typing |
+| `tipsy.mismatchWarningSuppressed` | `false` | Permanently silence the input-source / layout mismatch warning |
+| `tipsy.unicodeFallback` | `true` | Type unmapped chars as Unicode (forced off for `remoteConsole`) |
 | `tipsy.leadTime` | `3` | Countdown before typing starts |
 | `tipsy.hotkeyEnabled` | `true` | Global hotkey active |
 | `tipsy.hotkeyKeyCode` | `9` (V) | Trigger hotkey virtual key code |
@@ -137,13 +154,17 @@ survive relaunches; defaults are returned for keys that were never written.
 "Start at login" is **not** stored here — `LoginItem` uses `SMAppService`, whose
 registration state is the source of truth.
 
-`PreferencesWindowController` is a code-built (no nib) window with a layout
-popup; sliders for character delay (0–0.2s), jitter (0–0.1s), lead time (0–10s),
+`PreferencesWindowController` is a code-built (no nib) window with a **Target**
+popup (`localMac` / `remoteConsole`) and a layout popup filtered to that target's
+layout kind; sliders for character delay (0–0.2s), jitter (0–0.1s), lead time
+(0–10s), event delay (0–50 ms, gated behind an "Override event pacing" checkbox),
 and cue volume (0–1); a cue-motif popup with a **Test sound** button; the hotkey
-recorder button; and checkboxes for Unicode fallback, cue sound, global hotkey,
-and start-at-login. Each control writes straight through to `Settings` (or the
+recorder button; and checkboxes for normalization, Unicode fallback (disabled
+with an explanatory tooltip on `remoteConsole`), cue sound, global hotkey, and
+start-at-login. Each control writes straight through to `Settings` (or the
 relevant system service) and calls `onChange`, which makes `AppDelegate` re-apply
-settings, refresh the hotkey state, and rebuild the menu live.
+settings, refresh the hotkey state, and rebuild the menu live. Selecting a target
+or layout in the menu conversely calls `reloadFromSettings()` on an open window.
 
 ## Global hotkey
 

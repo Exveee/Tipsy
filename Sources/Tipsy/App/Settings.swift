@@ -13,9 +13,13 @@ enum Settings {
     private static let defaults = UserDefaults.standard
 
     private enum Key {
+        static let targetProfile = "tipsy.targetProfile"
         static let layoutID = "tipsy.layoutID"
         static let characterDelay = "tipsy.characterDelay"
         static let jitter = "tipsy.jitter"
+        static let interEventDelay = "tipsy.interEventDelay"
+        static let normalizationEnabled = "tipsy.normalizationEnabled"
+        static let mismatchWarningSuppressed = "tipsy.mismatchWarningSuppressed"
         static let unicodeFallback = "tipsy.unicodeFallback"
         static let leadTime = "tipsy.leadTime"
         static let hotkeyEnabled = "tipsy.hotkeyEnabled"
@@ -35,9 +39,20 @@ enum Settings {
         min(max(value, lo), hi)
     }
 
-    /// Identifier of the default keyboard layout. Defaults to the first layout.
+    /// Where the synthesized keystrokes are interpreted. Persisted as the
+    /// ``TargetProfile`` raw string; defaults to ``TargetProfile/localMac``.
+    /// A corrupt or unknown stored value falls back to the default.
+    static var targetProfile: TargetProfile {
+        get { TargetProfile(rawValue: defaults.string(forKey: Key.targetProfile) ?? "") ?? .localMac }
+        set { defaults.set(newValue.rawValue, forKey: Key.targetProfile) }
+    }
+
+    /// Identifier of the active keyboard layout. Defaults to
+    /// ``Layouts/defaultLayoutID`` (German), so upgrading users keep the
+    /// pre-target-mode default even though the registry now leads with the
+    /// dynamic local layout.
     static var layoutID: String {
-        get { defaults.string(forKey: Key.layoutID) ?? Layouts.all[0].id }
+        get { defaults.string(forKey: Key.layoutID) ?? Layouts.defaultLayoutID }
         set { defaults.set(newValue, forKey: Key.layoutID) }
     }
 
@@ -53,6 +68,38 @@ enum Settings {
     static var jitter: Double {
         get { clamp(defaults.object(forKey: Key.jitter) as? Double ?? 0, 0, 0.1) }
         set { defaults.set(newValue, forKey: Key.jitter) }
+    }
+
+    /// Optional override for the pause between the individual events of one
+    /// stroke, in seconds. `nil` (the default, i.e. the key was never written)
+    /// means "use the active profile's default pacing"; a stored value is
+    /// clamped to the UI range `0...0.05`.
+    static var interEventDelay: Double? {
+        get {
+            guard let stored = defaults.object(forKey: Key.interEventDelay) as? Double else { return nil }
+            return clamp(stored, 0, 0.05)
+        }
+        set {
+            if let newValue {
+                defaults.set(newValue, forKey: Key.interEventDelay)
+            } else {
+                defaults.removeObject(forKey: Key.interEventDelay)
+            }
+        }
+    }
+
+    /// Whether typographic characters are rewritten to typeable ASCII before the
+    /// layout lookup runs (per the active profile's preset). Defaults to `true`.
+    static var normalizationEnabled: Bool {
+        get { defaults.object(forKey: Key.normalizationEnabled) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Key.normalizationEnabled) }
+    }
+
+    /// Whether the "active macOS input source doesn't match the selected layout"
+    /// warning is silenced permanently. Defaults to `false`.
+    static var mismatchWarningSuppressed: Bool {
+        get { defaults.object(forKey: Key.mismatchWarningSuppressed) as? Bool ?? false }
+        set { defaults.set(newValue, forKey: Key.mismatchWarningSuppressed) }
     }
 
     /// Whether unmapped characters are typed via Unicode. Defaults to `true`.

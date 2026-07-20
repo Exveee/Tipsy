@@ -9,11 +9,16 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
     /// Called after any setting changes so AppDelegate can re-apply them.
     var onChange: (() -> Void)?
 
+    private let targetPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let layoutPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let characterDelaySlider = NSSlider()
     private let characterDelayLabel = NSTextField(labelWithString: "")
     private let jitterSlider = NSSlider()
     private let jitterLabel = NSTextField(labelWithString: "")
+    private let interEventOverrideCheckbox = NSButton()
+    private let interEventDelaySlider = NSSlider()
+    private let interEventDelayLabel = NSTextField(labelWithString: "")
+    private let normalizationCheckbox = NSButton()
     private let unicodeFallbackCheckbox = NSButton()
     private let leadTimeSlider = NSSlider()
     private let leadTimeLabel = NSTextField(labelWithString: "")
@@ -72,11 +77,16 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
             stack.bottomAnchor.constraint(lessThanOrEqualTo: content.bottomAnchor, constant: -20)
         ])
 
-        // Layout popup
-        for layout in Layouts.all {
-            layoutPopup.addItem(withTitle: layout.displayName)
-            layoutPopup.lastItem?.representedObject = layout.id
+        // Target profile popup (drives layout filtering + Unicode fallback)
+        for profile in TargetProfile.allCases {
+            targetPopup.addItem(withTitle: profile.displayName)
+            targetPopup.lastItem?.representedObject = profile.rawValue
         }
+        targetPopup.target = self
+        targetPopup.action = #selector(targetChanged)
+        stack.addArrangedSubview(labeledRow("Target:", targetPopup))
+
+        // Layout popup (items filled per profile in rebuildLayoutPopup)
         layoutPopup.target = self
         layoutPopup.action = #selector(layoutChanged)
         stack.addArrangedSubview(labeledRow("Default layout:", layoutPopup))
@@ -104,6 +114,28 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         leadTimeSlider.action = #selector(leadTimeChanged)
         leadTimeSlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
         stack.addArrangedSubview(labeledRow("Lead time:", leadTimeSlider, valueLabel: leadTimeLabel))
+
+        // Event pacing: a checkbox to override the profile default, plus a
+        // slider in milliseconds (0–50 ms).
+        interEventOverrideCheckbox.setButtonType(.switch)
+        interEventOverrideCheckbox.title = "Override event pacing"
+        interEventOverrideCheckbox.target = self
+        interEventOverrideCheckbox.action = #selector(interEventOverrideChanged)
+        stack.addArrangedSubview(interEventOverrideCheckbox)
+
+        interEventDelaySlider.minValue = 0
+        interEventDelaySlider.maxValue = 50   // milliseconds
+        interEventDelaySlider.target = self
+        interEventDelaySlider.action = #selector(interEventDelayChanged)
+        interEventDelaySlider.widthAnchor.constraint(equalToConstant: 180).isActive = true
+        stack.addArrangedSubview(labeledRow("Event delay:", interEventDelaySlider, valueLabel: interEventDelayLabel))
+
+        // Normalize typographic characters
+        normalizationCheckbox.setButtonType(.switch)
+        normalizationCheckbox.title = "Normalize typographic characters"
+        normalizationCheckbox.target = self
+        normalizationCheckbox.action = #selector(normalizationChanged)
+        stack.addArrangedSubview(normalizationCheckbox)
 
         // Unicode fallback checkbox
         unicodeFallbackCheckbox.setButtonType(.switch)
@@ -187,13 +219,34 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
 
     // MARK: - Loading
 
+    /// Public re-entry point so ``AppDelegate`` can refresh an open window after
+    /// the menu changes the profile or layout.
+    func reloadFromSettings() {
+        loadFromSettings()
+    }
+
     private func loadFromSettings() {
-        let index = Layouts.all.firstIndex { $0.id == Settings.layoutID } ?? 0
-        layoutPopup.selectItem(at: index)
+        let profile = Settings.targetProfile
+        let profileIndex = TargetProfile.allCases.firstIndex(of: profile) ?? 0
+        targetPopup.selectItem(at: profileIndex)
+
+        rebuildLayoutPopup(for: profile)
 
         characterDelaySlider.doubleValue = Settings.characterDelay
         jitterSlider.doubleValue = Settings.jitter
         leadTimeSlider.doubleValue = Settings.leadTime
+
+        // Event pacing: overridden when a value is stored; otherwise show the
+        // profile default (greyed out).
+        let override = Settings.interEventDelay
+        interEventOverrideCheckbox.state = override != nil ? .on : .off
+        let seconds = override ?? profile.defaultInterEventDelay
+        interEventDelaySlider.doubleValue = seconds * 1000   // seconds → ms
+        interEventDelaySlider.isEnabled = override != nil
+
+        normalizationCheckbox.state = Settings.normalizationEnabled ? .on : .off
+        updateUnicodeFallbackAvailability(for: profile)
+
         unicodeFallbackCheckbox.state = Settings.unicodeFallback ? .on : .off
         cueSoundCheckbox.state = Settings.cueSoundEnabled ? .on : .off
         let variantIndex = CueVariant.allCases.firstIndex {
@@ -221,14 +274,80 @@ final class PreferencesWindowController: NSWindowController, NSWindowDelegate {
         jitterLabel.stringValue = String(format: "%.3fs", Settings.jitter)
         leadTimeLabel.stringValue = String(format: "%.1fs", Settings.leadTime)
         cueVolumeLabel.stringValue = "\(Int(Settings.cueVolume * 100))%"
+        interEventDelayLabel.stringValue = String(format: "%.0f ms", interEventDelaySlider.doubleValue)
+    }
+
+    /// Rebuilds the layout popup to only the layouts valid for `profile`, then
+    /// selects the active one (mirrors the menu's per-profile filtering).
+    private func rebuildLayoutPopup(for profile: TargetProfile) {
+        layoutPopup.removeAllItems()
+        for layout in Layouts.matching(kind: profile.layoutKind) {
+            layoutPopup.addItem(withTitle: layout.displayName)
+            layoutPopup.lastItem?.representedObject = layout.id
+        }
+        let index = layoutPopup.itemArray.firstIndex {
+            $0.representedObject as? String == Settings.layoutID
+        } ?? 0
+        layoutPopup.selectItem(at: index)
+    }
+
+    /// The Unicode fallback is unusable on a remote console (clients see key
+    /// code 0 as the `A` key), so the checkbox is disabled there with an
+    /// explanatory tooltip.
+    private func updateUnicodeFallbackAvailability(for profile: TargetProfile) {
+        let allowed = profile.allowsUnicodeFallback
+        unicodeFallbackCheckbox.isEnabled = allowed
+        unicodeFallbackCheckbox.toolTip = allowed ? nil :
+            "Unavailable for a remote console: KVM/VNC clients see the fallback's key code 0 as the A key, so every unmapped character would arrive as a stray “a”."
     }
 
     // MARK: - Actions
+
+    @objc private func targetChanged() {
+        guard let raw = targetPopup.selectedItem?.representedObject as? String,
+              let profile = TargetProfile(rawValue: raw) else { return }
+        Settings.targetProfile = profile
+        // Keep the layout valid for the new profile; persist any auto-reselect.
+        Settings.layoutID = Layouts.resolvedLayoutID(for: profile, current: Settings.layoutID)
+        rebuildLayoutPopup(for: profile)
+        updateUnicodeFallbackAvailability(for: profile)
+        // Refresh the pacing slider's default/greyed state for the new profile.
+        if Settings.interEventDelay == nil {
+            interEventDelaySlider.doubleValue = profile.defaultInterEventDelay * 1000
+            updateValueLabels()
+        }
+        onChange?()
+    }
 
     @objc private func layoutChanged() {
         if let id = layoutPopup.selectedItem?.representedObject as? String {
             Settings.layoutID = id
         }
+        onChange?()
+    }
+
+    @objc private func interEventOverrideChanged() {
+        if interEventOverrideCheckbox.state == .on {
+            // Adopt the slider's current (profile-default) value as the override.
+            Settings.interEventDelay = interEventDelaySlider.doubleValue / 1000
+            interEventDelaySlider.isEnabled = true
+        } else {
+            Settings.interEventDelay = nil
+            interEventDelaySlider.isEnabled = false
+            interEventDelaySlider.doubleValue = Settings.targetProfile.defaultInterEventDelay * 1000
+        }
+        updateValueLabels()
+        onChange?()
+    }
+
+    @objc private func interEventDelayChanged() {
+        Settings.interEventDelay = interEventDelaySlider.doubleValue / 1000   // ms → seconds
+        updateValueLabels()
+        onChange?()
+    }
+
+    @objc private func normalizationChanged() {
+        Settings.normalizationEnabled = normalizationCheckbox.state == .on
         onChange?()
     }
 

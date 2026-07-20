@@ -43,6 +43,32 @@ public extension KeyboardLayout {
 
 /// Registry of layouts shipped with Tipsy.
 public enum Layouts {
-    /// All available layouts. The first entry is the default.
-    public static let all: [KeyboardLayout] = [GermanLayout(), USLayout(), UKLayout(), SwissGermanLayout(), GermanPCLayout(), USPCLayout()]
+    /// All available layouts, in menu order. ``DynamicLocalLayout`` leads as the
+    /// first `.appleLocal` choice — the default when the `.localMac` profile
+    /// needs a layout — while ``defaultLayoutID`` keeps a fresh install on German
+    /// so upgrading users see no change.
+    public static let all: [KeyboardLayout] = [DynamicLocalLayout(), GermanLayout(), USLayout(), UKLayout(), SwissGermanLayout(), GermanPCLayout(), USPCLayout()]
+
+    /// Identifier of the layout a fresh install starts on. Kept as German
+    /// (not `all[0]`) so upgrading users — and anyone who never touched the
+    /// picker — keep the pre-target-mode default.
+    public static let defaultLayoutID = "de"
+
+    /// The registered layouts whose ``KeyboardLayout/kind`` matches `kind`, in
+    /// registry order. Pure: drives both the menu and Preferences filtering.
+    public static func matching(kind: LayoutKind) -> [KeyboardLayout] {
+        all.filter { $0.kind == kind }
+    }
+
+    /// Resolves which layout id to use for `profile`, given the `current`
+    /// selection: keeps `current` when its kind already matches the profile,
+    /// otherwise returns the first matching layout's id (or `current` unchanged
+    /// if — impossibly — none match). Pure; the app persists the result.
+    public static func resolvedLayoutID(for profile: TargetProfile, current: String) -> String {
+        let kind = profile.layoutKind
+        if let layout = all.first(where: { $0.id == current }), layout.kind == kind {
+            return current
+        }
+        return matching(kind: kind).first?.id ?? current
+    }
 }

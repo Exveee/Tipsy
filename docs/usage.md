@@ -47,6 +47,13 @@ keys Tipsy presses so the remote end receives the characters you copied, even
 if its keyboard layout differs from yours. Your choice is remembered across
 launches.
 
+The **Target** section above the layout list chooses *where* those keystrokes
+land — an app on this Mac (**Local Mac**, the default) or a machine behind a
+KVM/console (**Remote console (KVM)**). The target filters the layout list: Local
+Mac offers the macOS layouts (plus a **Dynamic (Local)** entry that follows your
+current input source), while Remote console offers the PC/scancode layouts. See
+[Typing into a KVM console](#typing-into-a-kvm-console) for the remote workflow.
+
 ## Type the clipboard
 
 1. Copy the text you want to send.
@@ -78,16 +85,33 @@ editors — see
 
 Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist:
 
-- **Default layout** — the layout used for typing.
+- **Target** (default *Local Mac*) — where the keystrokes are interpreted:
+  *Local Mac* (an app on this Mac) or *Remote console (KVM)* (a machine reached
+  through a KVM/VNC/IPMI/web console). The choice filters the layout list to the
+  layouts that make sense for it and constrains the options below. See
+  [Typing into a KVM console](#typing-into-a-kvm-console).
+- **Default layout** — the layout used for typing, filtered by the target.
 - **Character delay** (0–0.2s, default 0.012s) — pause between each character.
   Slow console targets can drop input that arrives too fast; raise this if
   characters go missing.
 - **Jitter** (0–0.1s, default 0) — random ± variation added to each delay to
   make typing look less mechanical.
 - **Lead time** (0–10s, default 3s) — the focus countdown described above.
+- **Override event pacing** + **Event delay** (0–50 ms) — the pause between the
+  individual events *inside* one keystroke (a modifier press and the key press).
+  Left unchecked, Tipsy uses the target's default (0 ms local, 8 ms remote).
+  Check it and raise the slider if a remote console drops modifiers so that e.g.
+  `"` arrives as `2`.
+- **Normalize typographic characters** (default on) — rewrites smart quotes,
+  dashes, non-breaking spaces, the ellipsis, invisible characters, and CRLF line
+  endings from pasted text into their typeable equivalents. On a remote console
+  every typographic character is rewritten (it can't be typed there otherwise);
+  on Local Mac only invisibles and line endings are touched.
 - **Type unmapped characters as Unicode** (default on) — when a character has
   no mapping in the chosen layout, type it directly via its Unicode value
-  instead of skipping it.
+  instead of skipping it. **Disabled for the Remote console target**: KVM
+  clients see the fallback's key code 0 as the `A` key, so unmapped characters
+  would arrive as a stray `a`.
 - **Trigger hotkey** — click the recorder button and press a new combo to
   rebind the global trigger (default ⌘⇧V).
 - **Play cue sound before typing** (default on) — a short distinctive tone when
@@ -100,13 +124,52 @@ Open **⌨︎ → Preferences…** (or ⌘,). All changes apply live and persist
   `SMAppService` so it launches automatically. Only effective for the installed
   app in `/Applications`.
 
-## Typical KVM / console workflow
+## Typing into a KVM console
 
-1. Open your KVM-over-IP / BMC / hypervisor console (iDRAC, iLO, IPMI, PiKVM,
-   Proxmox noVNC, …) and click into the field you need to fill.
-2. Set Tipsy's layout to match the **target** machine's keyboard layout.
-3. Copy the text (a password, a config snippet, a long command) on your Mac.
-4. Press **⌘⇧V** (or use the menu), then click back into the console field.
-5. Tipsy types the text after the lead time, at the configured speed. If some
-   characters can't be typed by the layout and Unicode fallback is off, Tipsy
-   reports which ones were skipped.
+A KVM-over-IP / BMC / hypervisor console (iDRAC, iLO, IPMI, PiKVM, Guacamole,
+Teleport, Proxmox noVNC, VNC clients, …) doesn't route your keystrokes through
+macOS. It forwards the physical **key position** and real modifier state, and the
+*remote* host interprets them with *its own* PC layout. Two things follow: you
+must pick a layout matching the remote host, and typographic characters and the
+Unicode fallback can't be used there.
+
+1. **Set the target to *Remote console (KVM)*.** Menu **⌨︎ → Target → Remote
+   console (KVM)**, or the **Target** popup in Preferences. This switches the
+   layout list to the PC/scancode layouts, turns on remote event pacing (an 8 ms
+   gap inside each keystroke so a KVM doesn't miss the modifier), and disables
+   the Unicode fallback.
+2. **Pick the PC layout that matches the *remote host's* keyboard layout** — not
+   your Mac's. Choose **German (PC/Remote)** if the remote OS is set to German
+   (QWERTZ), **US (PC/Remote)** if it's set to US (QWERTY). If the remote layout
+   and the layout you pick disagree, AltGr symbols and brackets come out wrong.
+3. **Leave *Normalize typographic characters* on** (the default). A remote
+   console can't type smart quotes, en/em dashes, non-breaking spaces, the `…`
+   ellipsis, or invisible characters at all, so Tipsy rewrites text pasted from
+   Word/Slack/browsers into the ASCII equivalents (`"`, `'`, `-`, ` `, `...`)
+   and normalizes CRLF to LF before typing.
+4. **Copy** the text on your Mac (a password, a config snippet, a command).
+5. **Trigger** with **⌘⇧V** (or the menu), then **immediately click into the
+   console field** so it has focus before the lead-time countdown ends.
+6. Tipsy types the text after the lead time, at the configured speed. Characters
+   the PC layout can't produce are reported as skipped (there is no Unicode
+   fallback on a remote target).
+
+If a remote console drops fast modifier changes (a shifted character arrives
+unshifted), raise **Event delay** under **Override event pacing**, or increase
+the character delay.
+
+### Verifying and troubleshooting
+
+Use the canary string and the browser key-event echo page in
+[kvm-test-matrix.md](kvm-test-matrix.md) to confirm what the remote actually
+receives. Common symptoms:
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| Stray `a` appears (e.g. `ä` → `aa`) | The Unicode fallback fired on a remote target (key code 0 = `A`) | Keep the target set to **Remote console (KVM)**, which disables the fallback; leave normalization on so typographic characters don't reach it. |
+| `2` typed instead of `"` (a shifted char arrives unshifted) | The KVM registered the key before the modifier | Check **Override event pacing** and raise **Event delay** (try 20–50 ms); a higher character delay also helps. |
+| `œ` or the wrong bracket (e.g. `{` → `Ü`) | The chosen PC layout doesn't match the remote host's layout | Select **German (PC/Remote)** for a German remote or **US (PC/Remote)** for a US remote, and check the remote OS's own keyboard-layout setting. |
+| Text fully garbled / mojibake | Wrong target or layout family — an Apple-local layout typed into a remote console | Switch the **Target** to *Remote console (KVM)* and pick a PC layout; Apple-local layouts assume macOS composes the keys. |
+
+See the full [symptom → cause table](kvm-test-matrix.md#known-symptom--cause-table)
+for more.

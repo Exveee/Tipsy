@@ -590,6 +590,73 @@ let normalizedCanary = TextNormalization.normalize(typographic, options: .remote
 expectEqual(normalizedCanary.allSatisfy { dePC.strokes(for: $0) != nil }, true, "normalized typographic text resolves on de-pc")
 expectEqual(normalizedCanary, "\"Hi\" 'x' 2013-2024 km\nEnde...")
 
+// MARK: - Target-mode wiring (#35)
+
+// Profile display names surface in the menu / Preferences popup.
+expectEqual(TargetProfile.localMac.displayName, "Local Mac")
+expectEqual(TargetProfile.remoteConsole.displayName, "Remote console (KVM)")
+
+// Registry now leads with the dynamic local layout (first `.appleLocal` choice)
+// but a fresh install still defaults to German so upgrades see no change.
+expectEqual(Layouts.all.first?.id, "dynamic")
+expectEqual(Layouts.defaultLayoutID, "de")
+expectEqual(Layouts.all.contains { $0.id == "dynamic" }, true)
+
+// Layout filtering by kind: local offers only Apple-local layouts, remote only
+// PC/scancode ones, and the two partitions are disjoint and cover the registry.
+let localLayouts = Layouts.matching(kind: .appleLocal)
+let remoteLayouts = Layouts.matching(kind: .pcScancode)
+expectEqual(localLayouts.allSatisfy { $0.kind == .appleLocal }, true)
+expectEqual(remoteLayouts.allSatisfy { $0.kind == .pcScancode }, true)
+expectEqual(localLayouts.count + remoteLayouts.count, Layouts.all.count)
+// Dynamic is the first local choice; the PC layouts are the remote choices.
+expectEqual(localLayouts.first?.id, "dynamic")
+expectEqual(localLayouts.contains { $0.id == "de" }, true)
+expectEqual(remoteLayouts.map { $0.id }, ["de-pc", "us-pc"])
+// Filtering matches the profile's own layoutKind.
+expectEqual(Layouts.matching(kind: TargetProfile.localMac.layoutKind).first?.id, "dynamic")
+expectEqual(Layouts.matching(kind: TargetProfile.remoteConsole.layoutKind).map { $0.id }, ["de-pc", "us-pc"])
+
+// Auto-reselect: a still-valid layout is kept, a mismatched one snaps to the
+// first layout of the target profile's kind.
+expectEqual(Layouts.resolvedLayoutID(for: .localMac, current: "de"), "de", "local keeps a local layout")
+expectEqual(Layouts.resolvedLayoutID(for: .localMac, current: "dynamic"), "dynamic")
+expectEqual(Layouts.resolvedLayoutID(for: .localMac, current: "de-pc"), "dynamic", "switching to local off a PC layout picks the first local")
+expectEqual(Layouts.resolvedLayoutID(for: .remoteConsole, current: "de-pc"), "de-pc", "remote keeps a PC layout")
+expectEqual(Layouts.resolvedLayoutID(for: .remoteConsole, current: "de"), "de-pc", "switching to remote off a local layout picks the first PC")
+expectEqual(Layouts.resolvedLayoutID(for: .remoteConsole, current: "dynamic"), "de-pc")
+// An unknown/unstored id also resolves to the profile's first layout.
+expectEqual(Layouts.resolvedLayoutID(for: .localMac, current: "zz-nope"), "dynamic")
+expectEqual(Layouts.resolvedLayoutID(for: .remoteConsole, current: "zz-nope"), "de-pc")
+
+// Config built per profile from the same stored settings values: the local
+// profile honors the user's fallback/pacing; the remote profile constrains them.
+let storedDelay = 0.02
+let storedJitter = 0.005
+let localConfig = TypingConfig(profile: .localMac,
+                               characterDelay: storedDelay,
+                               jitter: storedJitter,
+                               unicodeFallback: true,
+                               interEventDelay: nil)
+expectEqual(localConfig.characterDelay, storedDelay)
+expectEqual(localConfig.jitter, storedJitter)
+expectEqual(localConfig.unicodeFallback, true, "local keeps the requested fallback")
+expectEqual(localConfig.interEventDelay, 0, "local default pacing is 0")
+
+let remoteConfig = TypingConfig(profile: .remoteConsole,
+                                characterDelay: storedDelay,
+                                jitter: storedJitter,
+                                unicodeFallback: true,
+                                interEventDelay: nil)
+expectEqual(remoteConfig.characterDelay, storedDelay, "pass-through timing unchanged")
+expectEqual(remoteConfig.jitter, storedJitter)
+expectEqual(remoteConfig.unicodeFallback, false, "remote forces the fallback off")
+expectEqual(remoteConfig.interEventDelay, TargetProfile.remoteConsole.defaultInterEventDelay,
+            "remote falls back to the profile's default pacing")
+// An explicit override wins over the profile default for either profile.
+expectEqual(TypingConfig(profile: .remoteConsole, interEventDelay: 0.03).interEventDelay, 0.03)
+expectEqual(TypingConfig(profile: .localMac, interEventDelay: 0.03).interEventDelay, 0.03)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
