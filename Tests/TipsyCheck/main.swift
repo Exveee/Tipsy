@@ -200,6 +200,26 @@ if let (data, keyLayout) = currentKeyLayout() {
     expectNil(dynamic.keyStroke(for: "a"), "no layout data => empty map")
 }
 
+// MARK: - InputSourceMatch (pure logic)
+
+// Exact prefix match.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.German", layoutID: "de"), true)
+// Longer source ID still matches by prefix.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.German.foo", layoutID: "de"), true)
+// Mismatch: US source while layout expects German.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.US", layoutID: "de"), false)
+// US layout accepts either US or ABC.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.ABC", layoutID: "us"), true)
+// Empty-list wildcard: the dynamic layout matches any source.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.inputmethod.SCIM.ITABC", layoutID: "dynamic"), true)
+// Unknown layout id => empty expectation list => matches anything.
+expectEqual(InputSourceMatch.expectedPrefixes(for: "zz-nope"), [])
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.Whatever", layoutID: "zz-nope"), true)
+// PC variants reuse the local prefixes.
+expectEqual(InputSourceMatch.expectedPrefixes(for: "de-pc"), ["com.apple.keylayout.German"])
+// Swiss German prefix.
+expectEqual(InputSourceMatch.matches(inputSourceID: "com.apple.keylayout.SwissGerman", layoutID: "ch-de"), true)
+
 // MARK: - Summary
 
 print("\(passed) passed, \(failed) failed")
