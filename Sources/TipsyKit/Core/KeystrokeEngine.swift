@@ -28,12 +28,21 @@ public struct TypingConfig: Sendable {
     /// When `false`, unmapped characters are reported back to the caller.
     public var unicodeFallback: Bool
 
+    /// Pause between the individual events *inside* one stroke sequence
+    /// (modifier down → key down → key up → modifier up, and between dead-key
+    /// steps). `0` posts back-to-back as before. Remote web consoles batch
+    /// events and can miss a modifier that arrives in the same batch as the
+    /// key; ``TargetProfile/remoteConsole`` defaults this to a few ms.
+    public var interEventDelay: TimeInterval
+
     public init(characterDelay: TimeInterval = 0.012,
                 jitter: TimeInterval = 0,
-                unicodeFallback: Bool = true) {
+                unicodeFallback: Bool = true,
+                interEventDelay: TimeInterval = 0) {
         self.characterDelay = characterDelay
         self.jitter = jitter
         self.unicodeFallback = unicodeFallback
+        self.interEventDelay = interEventDelay
     }
 }
 

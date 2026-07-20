@@ -44,6 +44,13 @@ public enum VK {
     // ignore per-event CGEventFlags — still see the modifier held.
     public static let shift: CGKeyCode = 56, option: CGKeyCode = 58
 
+    /// Right Option (`kVK_RightOption`). Remote hosts behind a KVM distinguish
+    /// left Alt from AltGr (right Alt): PC layouts produce their third-level
+    /// symbols (`@ € { } …`) only with AltGr, while left Alt is a menu
+    /// accelerator on Windows. Strokes targeting remote consoles therefore
+    /// press this key, not `option`.
+    public static let rightOption: CGKeyCode = 61
+
     /// US-position letter map, shared by layouts that keep QWERTY letters.
     public static let ansiLetters: [Character: CGKeyCode] = [
         "a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "g": g, "h": h,
